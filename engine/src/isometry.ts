@@ -154,6 +154,8 @@ const STEPS: Step[] = [
   ["node.list", { ...plan, limit: 0 }, "invalid"],
   ["plan.show", { ...plan, limit: 1 }],
   ["plan.show", { ...plan, full: true }],
+  ["plan.graph", plan],
+  ["plan.graph", plan, "ok", "stranger"],
   ["message.remove", { ...n2, message: "m-owner" }],
   ["message.remove", { ...n2, message: "m-nope" }, "not_found"],
   ["plan.delete", plan, "forbidden", "stranger"],
@@ -162,6 +164,7 @@ const STEPS: Step[] = [
   ["plan.unshare", { ...plan, email: STRANGER }, "ok", "stranger"],
   ["plan.unshare", { ...plan, email: STRANGER }, "not_found"],
   ["node.show", { plan: PLAN, ref: "N2" }, "not_found", "stranger"],
+  ["plan.graph", plan, "not_found", "stranger"],
   // A new node that takes over the requirement N2 provided to N1.
   ["node.create", { ...plan, title: "Other way", enables: ["N1"], forRequirement: "step-before" }],
   ["node.create", { ...plan, title: "Nope", enables: ["N1"], forRequirement: "missing" }, "not_found"],

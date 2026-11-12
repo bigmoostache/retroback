@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import type { OpInfo, OpResponse, PlanSummary, PlanView } from "@engine/types.ts"
+import type { NodeView, OpInfo, OpResponse, PlanGraph, PlanSummary } from "@engine/types.ts"
 import { call, toCommand, type Input } from "@/lib/api"
 
 const SLUG_KEY = "rb-plan"
@@ -31,7 +31,10 @@ export interface Engine {
   plans: PlanSummary[]
   /** Slug of the plan shown. */
   slug: string | null
-  plan: PlanView | null
+  /** The plan in compact form (`rb plan graph`); a node in full comes from useNode. */
+  plan: PlanGraph | null
+  /** Changes whenever the plan does. */
+  version: number
   selectPlan: (slug: string) => void
   /** Runs an operation, then rereads the data. */
   run: (op: string, input?: Input) => Promise<OpResponse<unknown>>
@@ -45,7 +48,9 @@ export function useEngine(): Engine {
   const [ops, setOps] = useState<OpInfo[]>([])
   const [plans, setPlans] = useState<PlanSummary[]>([])
   const [slug, setSlug] = useState<string | null>(() => localStorage.getItem(SLUG_KEY))
-  const [plan, setPlan] = useState<PlanView | null>(null)
+  const [plan, setPlan] = useState<PlanGraph | null>(null)
+  /** Bumped whenever the plan changes: the selected node is fetched again. */
+  const [version, setVersion] = useState(0)
   const [last, setLast] = useState<LastRun | null>(null)
   const wanted = useRef(slug)
   const seen = useRef("")
@@ -77,7 +82,7 @@ export function useEngine(): Engine {
     setOnline(list.ok)
     if (!list.ok) return
     const current = list.result.some((p) => p.slug === asked) ? asked : (list.result[0]?.slug ?? null)
-    const shown = current ? await call<PlanView>("plan.show", { plan: current, full: true }) : null
+    const shown = current ? await call<PlanGraph>("plan.graph", { plan: current }) : null
     // Another plan was selected meanwhile: a newer refresh is on its way.
     if (wanted.current !== asked) return
     const view = shown?.ok ? shown.result : null
@@ -88,6 +93,7 @@ export function useEngine(): Engine {
     setSlug(current)
     setPlans(list.result)
     setPlan(view)
+    setVersion((v) => v + 1)
   }, [])
 
   useEffect(() => {
@@ -121,7 +127,7 @@ export function useEngine(): Engine {
         message: response.ok ? null : response.error.message,
       })
       if (response.ok) {
-        if (op === "plan.create") want((response.result as PlanView).slug)
+        if (op === "plan.create") want((response.result as PlanSummary).slug)
         await refresh()
       }
       return response
@@ -137,7 +143,30 @@ export function useEngine(): Engine {
     await refresh()
   }, [refresh])
 
-  return { online, auth, signOut, ops, plans, slug, plan, selectPlan, run, last }
+  return { online, auth, signOut, ops, plans, slug, plan, version, selectPlan, run, last }
+}
+
+/**
+ * One node in full (`rb node show`), fetched when it is selected and again
+ * whenever the plan changes. Null while loading or when it does not exist.
+ */
+export function useNode(slug: string | null, ref: string | null, version: number): NodeView | null {
+  const [node, setNode] = useState<NodeView | null>(null)
+  useEffect(() => {
+    if (!slug || !ref) {
+      setNode(null)
+      return
+    }
+    let live = true
+    void call<NodeView>("node.show", { plan: slug, ref }).then((r) => {
+      if (live) setNode(r.ok ? r.result : null)
+    })
+    return () => {
+      live = false
+    }
+  }, [slug, ref, version])
+  // A node of another plan or another ref is never shown while the right one loads.
+  return node && node.plan === slug && node.ref === ref ? node : null
 }
 
 /** Who the browser is signed in as. Null when the API does not answer. */

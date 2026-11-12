@@ -95,12 +95,64 @@ export function unlockSize<N extends Unlockable & { size: number }>(nodes: reado
  * longer path (if A requires B and C, and B requires C, C -> A is dropped).
  */
 export function reducedLinks(prereqs: Prereqs): [string, string][] {
+  const depth = depths(prereqs)
   const links: [string, string][] = []
   for (const [later, direct] of prereqs) {
-    for (const former of direct) {
-      const implied = direct.some((other) => other !== former && requires(prereqs, other, former))
-      if (!implied) links.push([former, later])
+    if (direct.length < 2) {
+      for (const former of direct) links.push([former, later])
+      continue
     }
+    // One walk down from the providers' own requirements: a direct provider met on the way is implied.
+    // A node no deeper than the shallowest provider cannot lead to any of them: the walk stops there.
+    const floor = Math.min(...direct.map((d) => depth.get(d) ?? 0))
+    const wanted = new Set(direct)
+    const implied = new Set<string>()
+    const seen = new Set<string>()
+    const stack = direct.flatMap((d) => [...(prereqs.get(d) ?? [])])
+    while (stack.length) {
+      const current = stack.pop()!
+      if (seen.has(current)) continue
+      seen.add(current)
+      if (wanted.has(current)) implied.add(current)
+      if ((depth.get(current) ?? 0) <= floor) continue
+      for (const p of prereqs.get(current) ?? []) stack.push(p)
+    }
+    for (const former of direct) if (!implied.has(former)) links.push([former, later])
   }
   return links
+}
+
+/**
+ * For each node, the length of the longest chain of requirements below it
+ * (0 for a node that requires nothing). Iterative: no deep recursion on long
+ * chains. A node caught in a loop (the engine refuses those) gets 0.
+ */
+export function depths(prereqs: Prereqs): Map<string, number> {
+  const depth = new Map<string, number>()
+  const state = new Map<string, 1 | 2>() // 1: on the stack, 2: done
+  for (const root of prereqs.keys()) {
+    if (state.has(root)) continue
+    const stack: [string, number][] = [[root, 0]]
+    state.set(root, 1)
+    while (stack.length) {
+      const top = stack[stack.length - 1]!
+      const [node, i] = top
+      const list = prereqs.get(node) ?? []
+      if (i < list.length) {
+        top[1] = i + 1
+        const next = list[i]!
+        if (!state.has(next)) {
+          state.set(next, 1)
+          stack.push([next, 0])
+        }
+        continue
+      }
+      let d = 0
+      for (const p of list) if (state.get(p) === 2) d = Math.max(d, (depth.get(p) ?? 0) + 1)
+      depth.set(node, d)
+      state.set(node, 2)
+      stack.pop()
+    }
+  }
+  return depth
 }

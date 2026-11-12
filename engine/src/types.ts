@@ -192,6 +192,31 @@ export interface SqlView {
   cut: boolean
 }
 
+/** One node as the graph view needs it: no texts beyond the title. `rb node show` gives the rest. */
+export interface GraphNode {
+  ref: string
+  seq: number
+  title: string
+  level: number | null
+  status: NodeStatus
+  size: number
+  gap: Gap | null
+  /** Earliest finish (YYYY-MM-DD), or null when unknown. */
+  finish: string | null
+  due: string | null
+  ready: boolean
+  dependsOn: string[]
+  criteria: Tally
+  /** Open obstacles. */
+  obstacles: number
+}
+
+/** What `plan graph` answers: the plan in a compact form, light enough for tens of thousands of nodes. */
+export interface PlanGraph extends PlanSummary {
+  nodes: GraphNode[]
+  check: { ok: boolean; errors: number; warnings: number }
+}
+
 /** What `node unlock` answers. */
 export interface UnlockView {
   /** The node to reach. */
