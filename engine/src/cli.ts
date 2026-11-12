@@ -15,7 +15,7 @@
  * Exit code: 0 on success, 1 on error, 3 when `plan check` finds an error.
  */
 import { camel, kebab } from "./flags.ts"
-import type { CheckView, Gap, MessageView, NodeView, OpInfo, OpResponse, PlanSummary, PlanView } from "./types.ts"
+import type { CheckView, Gap, MessageView, NodeView, OpInfo, OpResponse, PlanSummary, PlanView, UnlockView } from "./types.ts"
 
 /** Where operations run: in this process on the database, or on a remote engine API. */
 interface Backend {
@@ -149,8 +149,8 @@ function renderCheck(check: CheckView): string {
 function renderNodes(nodes: NodeView[]): string {
   if (nodes.length === 0) return "No node yet. Create the target with: rb node create --title <text>"
   return table([
-    ["REF", "LEVEL", "GAP", "FROM", "STATUS", "DIFF", "TITLE"],
-    ...nodes.map((n) => [n.ref, num(n.level), gapText(n.gap), n.gap.from, n.status, String(n.difficulty), n.title]),
+    ["REF", "LEVEL", "GAP", "FROM", "STATUS", "SIZE", "TITLE"],
+    ...nodes.map((n) => [n.ref, num(n.level), gapText(n.gap), n.gap.from, n.status, String(n.size), n.title]),
   ])
 }
 
@@ -158,7 +158,7 @@ function renderNode(n: NodeView): string {
   const list = (title: string, lines: string[]) => [``, title, ...(lines.length ? lines.map((l) => `  ${l}`) : ["  (none)"])]
   return [
     `${n.ref}  ${n.title}  [${n.status}]`,
-    `level ${num(n.level)}, ${gapText(n.gap)} from ${n.gap.from} (${num(n.gap.base)}), difficulty ${n.difficulty}/100`,
+    `level ${num(n.level)}, ${gapText(n.gap)} from ${n.gap.from} (${num(n.gap.base)}), size ${n.size}/100`,
     ...(n.description ? ["", n.description] : []),
     ...list("Success criteria", n.criteria.map((c) => `${c.index}. ${box(c.met)} ${c.text}`)),
     ...list(
@@ -240,12 +240,16 @@ function renderOpHelp(info: OpInfo): string {
 /** Picks the rendering from the shape of the operation's result. */
 function render(name: string, result: unknown): string {
   if (name === "message.list") return renderMessages(result as MessageView[])
+  if (name === "node.unlock") {
+    const u = result as UnlockView
+    if (u.nodes.length === 0) return `Nothing to unlock: ${u.target} is done.`
+    return [`To reach ${u.target}, tackle now:`, renderNodes(u.nodes), "", `Size left: ${u.size} (heaviest path, perfect parallelism)`].join("\n")
+  }
   if (Array.isArray(result)) {
     const first = result[0] as Record<string, unknown> | undefined
     if (!first) {
       if (name === "plan.list") return renderPlans([])
       if (name === "node.list") return renderNodes([])
-      if (name === "node.unlock") return "Nothing to unlock: the node is done."
       return "(nothing)"
     }
     if ("cli" in first) return renderOps(result as OpInfo[])

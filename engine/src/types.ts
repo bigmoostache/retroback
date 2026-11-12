@@ -54,8 +54,8 @@ export interface NodeView {
   /** Metric value reached once the node is done. */
   level: number
   status: NodeStatus
-  /** From 0 (trivial) to 100 (hardest). */
-  difficulty: number
+  /** How big the node is, from 0 (tiny) to 100 (largest). */
+  size: number
   criteria: CheckItem[]
   requirements: RequirementView[]
   resources: ResourceView[]
@@ -66,6 +66,16 @@ export interface NodeView {
   gap: Gap
   /** Oldest first. */
   messages: MessageView[]
+}
+
+/** What `node unlock` answers. */
+export interface UnlockView {
+  /** The node to reach. */
+  target: string
+  /** What to tackle now: open nodes whose requirements are all done. */
+  nodes: NodeView[]
+  /** Heaviest path of sizes through the open nodes up to `target`: what is left with perfect parallelism. */
+  size: number
 }
 
 export interface Issue {

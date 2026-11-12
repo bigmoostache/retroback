@@ -38,7 +38,7 @@ interface SeedNode {
   resources: [string, string, number, string][]
   status?: NodeStatus
   /** 0 to 100. Default: a fake value drawn from the title, stable from one seed to the next. */
-  difficulty?: number
+  size?: number
   /** author, text */
   messages?: [string, string][]
   /** What this node requires: created after it, one step before it. */
@@ -512,8 +512,8 @@ const SEEDS: SeedPlan[] = [DEMO, GROWTH]
 
 // ------------------------------------------------------------------- build
 
-/** A fake difficulty between 15 and 85, always the same for the same title. */
-function fakeDifficulty(title: string): number {
+/** A fake size between 15 and 85, always the same for the same title. */
+function fakeSize(title: string): number {
   let hash = 0
   for (const char of title) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
   return 15 + (hash % 71)
@@ -535,7 +535,7 @@ async function build(seed: SeedPlan): Promise<boolean> {
       title: node.title,
       description: node.description,
       ...(later ? { enables: [later] } : {}),
-      difficulty: node.difficulty ?? fakeDifficulty(node.title),
+      size: node.size ?? fakeSize(node.title),
       criterion: node.criteria,
       requirement: node.requirements,
     })

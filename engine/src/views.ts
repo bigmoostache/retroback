@@ -75,7 +75,7 @@ export async function loadPlan(slug?: string): Promise<PlanView> {
       description: n.description,
       level: n.level,
       status: n.status,
-      difficulty: n.difficulty,
+      size: n.size,
       criteria: n.criteria.map((c, i) => ({ index: i + 1, text: c.text, met: c.met })),
       requirements: n.requirements.map((r, i) => {
         const providedBy = providersOf(r)

@@ -69,6 +69,28 @@ export function openPath<N extends Unlockable>(nodes: readonly N[], prereqs: Pre
 }
 
 /**
+ * The size of reaching `ref`: the heaviest path through the nodes still in
+ * the way (`openPath`), summing their sizes. With perfect parallelism, that is
+ * how much is left before `ref` is done. 0 when `ref` is done.
+ */
+export function unlockSize<N extends Unlockable & { size: number }>(nodes: readonly N[], prereqs: Prereqs, ref: string): number {
+  const byRef = new Map(nodes.map((n) => [n.ref, n]))
+  const open = openPath(nodes, prereqs, ref)
+  const memo = new Map<string, number>()
+  const heaviest = (current: string): number => {
+    const known = memo.get(current)
+    if (known !== undefined) return known
+    // Guard against a loop the engine never lets in.
+    memo.set(current, 0)
+    const before = (prereqs.get(current) ?? []).filter((p) => open.has(p)).map(heaviest)
+    const value = byRef.get(current)!.size + Math.max(0, ...before)
+    memo.set(current, value)
+    return value
+  }
+  return open.has(ref) ? heaviest(ref) : 0
+}
+
+/**
  * The links worth drawing: [former, later] pairs, without those implied by a
  * longer path (if A requires B and C, and B requires C, C -> A is dropped).
  */
