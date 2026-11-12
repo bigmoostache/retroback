@@ -33,12 +33,15 @@ export function NodeChain({
   plan,
   selected,
   onSelect,
+  onOpen,
   ask,
   tools,
 }: {
   plan: PlanGraph
   selected: string | null
   onSelect: (ref: string) => void
+  /** Opens the node in the drawer (double click). */
+  onOpen: (ref: string) => void
   ask: Ask
   tools?: ReactNode | undefined
 }) {
@@ -84,7 +87,9 @@ export function NodeChain({
               <button
                 type="button"
                 aria-current={node.ref === selected ? "true" : undefined}
+                title="Double-click to open"
                 onClick={() => onSelect(node.ref)}
+                onDoubleClick={() => onOpen(node.ref)}
                 className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2 text-left"
               >
                 <code className="w-9 shrink-0 font-mono text-subhead text-muted-foreground">{node.ref}</code>

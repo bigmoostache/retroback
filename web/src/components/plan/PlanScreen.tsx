@@ -35,7 +35,6 @@ export function PlanScreen({ engine, ask }: { engine: Engine; ask: Ask }) {
   const showUnlock = (ref: string | null) => {
     if (ref) {
       setSelected(ref)
-      setDrawerOpen(true)
       setLayout("graph")
       localStorage.setItem(LAYOUT_KEY, "graph")
     }
@@ -46,9 +45,10 @@ export function PlanScreen({ engine, ask }: { engine: Engine; ask: Ask }) {
   )
   const selectedRef = (selected && plan?.nodes.some((n) => n.ref === selected) ? selected : plan?.nodes[0]?.ref) ?? null
   const node = useNode(plan?.slug ?? null, selectedRef, engine.version)
-  // The drawer: closed at first so the graph has the whole screen, opened by selecting a node.
+  // The drawer: closed at first so the graph has the whole screen. A click selects a node; a double click opens it.
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const select = (ref: string) => {
+  const select = (ref: string) => setSelected(ref)
+  const open = (ref: string) => {
     setSelected(ref)
     setDrawerOpen(true)
   }
@@ -151,6 +151,7 @@ export function PlanScreen({ engine, ask }: { engine: Engine; ask: Ask }) {
                 plan={plan}
                 selected={selectedRef}
                 onSelect={select}
+                onOpen={open}
                 ask={ask}
                 tools={tools}
                 unlockOf={unlockOf}
@@ -158,7 +159,7 @@ export function PlanScreen({ engine, ask }: { engine: Engine; ask: Ask }) {
               />
             ) : (
               <div className="-m-1 flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-1">
-                <NodeChain plan={plan} selected={selectedRef} onSelect={select} ask={ask} tools={tools} />
+                <NodeChain plan={plan} selected={selectedRef} onSelect={select} onOpen={open} ask={ask} tools={tools} />
               </div>
             )}
           </div>

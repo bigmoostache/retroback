@@ -105,12 +105,14 @@ function Card({
   selected,
   mark,
   onSelect,
+  onOpen,
 }: {
   item: GraphItem
   node: GraphNode
   selected: boolean
   mark: Mark
   onSelect: (ref: string) => void
+  onOpen: (ref: string) => void
 }) {
   const late = node.due !== null && node.finish !== null && node.finish > node.due
   return (
@@ -119,7 +121,9 @@ function Card({
       data-node-ref={node.ref}
       data-unlock-mark={mark ?? undefined}
       aria-current={selected ? "true" : undefined}
+      title="Double-click to open"
       onClick={() => onSelect(node.ref)}
+      onDoubleClick={() => onOpen(node.ref)}
       style={place(item)}
       className={cn(
         "card-shadow absolute flex cursor-pointer flex-col gap-1 overflow-hidden rounded-2xl bg-surface-2 p-3 text-left transition-opacity duration-base",
@@ -183,6 +187,7 @@ export function NodeGraph({
   plan,
   selected,
   onSelect,
+  onOpen,
   ask,
   tools,
   unlockOf,
@@ -191,6 +196,8 @@ export function NodeGraph({
   plan: PlanGraph
   selected: string | null
   onSelect: (ref: string) => void
+  /** Opens the node in the drawer (double click). */
+  onOpen: (ref: string) => void
   ask: Ask
   tools?: ReactNode | undefined
   /** The node whose unlock is shown on the graph, or null. */
@@ -401,6 +408,7 @@ export function NodeGraph({
                 selected={item.id === selected}
                 mark={markOf(item.id)}
                 onSelect={onSelect}
+                onOpen={onOpen}
               />
             ) : (
               <End key={item.id} item={item} plan={plan} />
