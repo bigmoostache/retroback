@@ -510,7 +510,7 @@ async function build(seed: SeedPlan): Promise<boolean> {
     })
     if (node.key) refs.set(node.key, created.ref)
     const at = { ...plan, node: created.ref }
-    const withLevel = await run<NodeView>("criterion.add", { ...at, text: seed.levelCriterion(created.level, later === null) })
+    const withLevel = await run<NodeView>("criterion.add", { ...at, text: seed.levelCriterion(created.level!, later === null) })
     for (const [kind, name, quantity, unit] of node.resources) {
       await run("resource.add", { ...at, kind, name, quantity, unit })
     }

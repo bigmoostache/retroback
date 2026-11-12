@@ -23,7 +23,7 @@ interface Level {
 }
 
 /** +1 when the metric must grow, -1 when it must shrink. */
-export const direction = (plan: Scale) => (plan.targetValue >= plan.presentValue ? 1 : -1)
+export const direction = (plan: Pick<Scale, "presentValue" | "targetValue">) => (plan.targetValue >= plan.presentValue ? 1 : -1)
 
 const progress = (plan: Scale, from: number, to: number) =>
   from === 0 ? null : ((direction(plan) * (to - from)) / Math.abs(from)) * 100
@@ -85,32 +85,46 @@ export function dependsOnPath(edges: (readonly [string, string])[], from: string
   return false
 }
 
-export function checkPlan(plan: Scale & { slug: string }, nodes: NodeView[]): CheckView {
+/** Extra facts the check needs beyond the nodes: computed in views.ts. */
+export interface CheckExtras {
+  /** Refs caught in a requirement loop. */
+  loops: string[]
+  /** [node, provider] pairs where the provider's level is beyond the node's. */
+  misordered: [string, string][]
+  /** Per node ref: cash short, in the plan's cash unit, when spending outruns what came in. */
+  unfunded: Map<string, number>
+  cashUnit: string
+}
+
+export function checkPlan(plan: Scale & { slug: string }, nodes: NodeView[], extras?: CheckExtras): CheckView {
   const issues: Issue[] = []
   const add = (severity: Issue["severity"], code: string, node: string | null, message: string) =>
     issues.push({ severity, code, node, message })
   const dir = direction(plan)
-  const atTarget = (n: NodeView) => dir * (n.level - plan.targetValue) >= -EPS
+  const atTarget = (n: NodeView) => n.level !== null && dir * (n.level - plan.targetValue) >= -EPS
 
   if (nodes.length === 0) add("error", "empty", null, "The plan has no node. Create the target first.")
   else if (!nodes.some(atTarget)) {
     add("error", "target_missing", null, `No node reaches the target value ${plan.targetValue}.`)
   }
 
+  for (const ref of extras?.loops ?? []) {
+    add("error", "loop", ref, `${ref} requires itself through a loop of requirements. Remove one of the links.`)
+  }
+  for (const [node, provider] of extras?.misordered ?? []) {
+    add("error", "provider_beyond", node, `${provider} provides a requirement of ${node} but its level is beyond ${node}'s.`)
+  }
+
   for (const n of nodes) {
-    const { gap } = n
-    const from = gap.from === "present" ? `the present (${gap.base})` : `${gap.from} (${gap.base})`
-    if (gap.percent === null) {
-      add("error", "gap_undefined", n.ref, `${n.ref} starts from 0: a percent gap cannot be computed.`)
-    } else if (gap.percent <= 0) {
-      add("error", "no_progress", n.ref, `${n.ref} (${n.level}) is not beyond ${from}.`)
-    } else if (!gap.ok) {
-      add(
-        "error",
-        "gap_too_large",
-        n.ref,
-        `${n.ref} (${n.level}) is ${gap.percent}% beyond ${from}; the plan allows ${plan.gapPercent}%. Add a node in between.`,
-      )
+    const short = extras?.unfunded.get(n.ref)
+    if (short !== undefined) {
+      add("error", "unfunded", n.ref, `${n.ref} and what it requires spend ${short} ${extras!.cashUnit} more than the plan has by then.`)
+    }
+    if (n.due && n.schedule.finish && n.schedule.finish > n.due) {
+      add("error", "late", n.ref, `${n.ref} finishes ${n.schedule.finish} at the earliest, after its due date ${n.due}.`)
+    }
+    if (n.status !== "done" && n.obstacles.length === 0) {
+      add("warning", "no_obstacles", n.ref, `${n.ref} lists no obstacle: what could stop it?`)
     }
     if (n.criteria.length === 0) add("error", "no_criteria", n.ref, `${n.ref} has no success criterion.`)
     for (const c of n.criteria) {
@@ -126,6 +140,23 @@ export function checkPlan(plan: Scale & { slug: string }, nodes: NodeView[]): Ch
     if (n.resources.length === 0) add("warning", "no_resources", n.ref, `${n.ref} needs no resource.`)
     if (n.enables.length === 0 && !atTarget(n)) {
       add("warning", "leads_nowhere", n.ref, `${n.ref} enables no later node and is not the target.`)
+    }
+
+    // A milestone moves no metric: no gap to check.
+    const { gap } = n
+    if (gap === null || n.level === null) continue
+    const from = gap.from === "present" ? `the present (${gap.base})` : `${gap.from} (${gap.base})`
+    if (gap.percent === null) {
+      add("error", "gap_undefined", n.ref, `${n.ref} starts from 0: a percent gap cannot be computed.`)
+    } else if (gap.percent <= 0) {
+      add("error", "no_progress", n.ref, `${n.ref} (${n.level}) is not beyond ${from}.`)
+    } else if (!gap.ok) {
+      add(
+        "error",
+        "gap_too_large",
+        n.ref,
+        `${n.ref} (${n.level}) is ${gap.percent}% beyond ${from}; the plan allows ${plan.gapPercent}%. Add a node in between.`,
+      )
     }
   }
 
