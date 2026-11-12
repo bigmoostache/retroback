@@ -37,6 +37,63 @@ model Plan {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   nodes        Node[]
+  /// Who can see and change the plan: its creator (the owner) and contributors.
+  members      PlanMember[]
+}
+
+enum PlanRole {
+  owner
+  contributor
+}
+
+/// A person, known by the email Google gave (or local@dev when DEV=true).
+model User {
+  id        String       @id @default(cuid())
+  email     String       @unique
+  name      String       @default("")
+  createdAt DateTime     @default(now())
+  sessions  Session[]
+  apiKeys   ApiKey[]
+  plans     PlanMember[]
+}
+
+/// A web login. Only the hash of the cookie token is stored.
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+}
+
+/// A named key for rb, acting as its user. Only the hash of the secret is stored.
+model ApiKey {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  /// The first characters of the secret, to recognise it in a list.
+  prefix     String
+  hash       String    @unique
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  @@unique([userId, name])
+}
+
+/// Access to a plan. Exactly one owner per plan: its creator.
+model PlanMember {
+  planId    String
+  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      PlanRole
+  createdAt DateTime @default(now())
+
+  @@id([planId, userId])
+  @@index([userId])
 }
 
 model Node {

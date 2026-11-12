@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { assertOwner, currentUser, visiblePlans } from "../access.ts"
 import { db } from "../db.ts"
 import { slugify } from "../slug.ts"
 import { loadPlan, planOf, summarise } from "../views.ts"
@@ -19,6 +20,7 @@ export const planOps = [
     input: z.strictObject({}),
     run: async () => {
       const plans = await db.plan.findMany({
+        where: visiblePlans(),
         orderBy: { createdAt: "asc" },
         include: { _count: { select: { nodes: true } } },
       })
@@ -58,12 +60,20 @@ export const planOps = [
     }),
     run: async (input) => {
       assertScale(input)
+      const user = currentUser()
       const slug = slugify(input.slug ?? input.title)
       if (!slug) throw new OpError("The slug is empty: pass --slug.")
       if (await db.plan.findUnique({ where: { slug } })) {
         throw new OpError(`A plan "${slug}" already exists.`, "conflict")
       }
-      await db.plan.create({ data: { ...input, slug } })
+      await db.plan.create({
+        data: {
+          ...input,
+          slug,
+          // The creator is the owner, the only one. The engine itself creates ownerless plans (tests, maintenance).
+          ...(user ? { members: { create: { userId: user.id, role: "owner" as const } } } : {}),
+        },
+      })
       return loadPlan(slug)
     },
   }),
@@ -96,11 +106,12 @@ export const planOps = [
 
   defineOp({
     name: "plan.delete",
-    summary: "Delete a plan and all its nodes.",
+    summary: "Delete a plan and all its nodes. Only its owner can.",
     mutates: true,
     input: z.strictObject({ plan: z.string().describe("Plan slug.") }),
     run: async ({ plan }) => {
       const current = await planOf(plan)
+      await assertOwner(current)
       await db.plan.delete({ where: { id: current.id } })
       return { deleted: current.slug }
     },

@@ -121,6 +121,33 @@ export interface PlanView extends PlanSummary {
   check: CheckView
 }
 
+export type PlanRole = "owner" | "contributor"
+
+/** What `user.me` answers. */
+export interface UserView {
+  email: string
+  name: string
+  plans: { plan: string; role: PlanRole }[]
+}
+
+/** A person with access to a plan. */
+export interface MemberView {
+  email: string
+  name: string
+  role: PlanRole
+}
+
+/** An API key, without its secret. `key.create` adds `secret`, once. */
+export interface ApiKeyView {
+  name: string
+  /** The first characters of the secret, e.g. rb_Ab3d. */
+  prefix: string
+  createdAt: string
+  lastUsedAt: string | null
+  revoked: boolean
+  secret?: string
+}
+
 /** One entry of the event log. */
 export interface EventView {
   seq: number

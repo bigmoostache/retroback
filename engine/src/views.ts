@@ -1,4 +1,5 @@
 /** Reads the database and builds the shapes of types.ts. */
+import { visiblePlans } from "./access.ts"
 import { db } from "./db.ts"
 import { OpError } from "./ops/define.ts"
 import { checkPlan, computeGap } from "./rules.ts"
@@ -6,14 +7,17 @@ import type { NodeView, PlanSummary, PlanView, ResourceTotal } from "./types.ts"
 
 export const normRef = (ref: string) => ref.trim().toUpperCase()
 
-/** The plan with this slug, or the only plan when no slug is given. */
+/**
+ * The plan with this slug, or the only plan when no slug is given, among the
+ * plans the running user is a member of. Others answer not_found.
+ */
 export async function planOf(slug?: string) {
   if (slug) {
-    const plan = await db.plan.findUnique({ where: { slug } })
+    const plan = await db.plan.findFirst({ where: { slug, ...visiblePlans() } })
     if (!plan) throw new OpError(`No plan "${slug}".`, "not_found")
     return plan
   }
-  const plans = await db.plan.findMany({ take: 2 })
+  const plans = await db.plan.findMany({ where: visiblePlans(), take: 2 })
   if (plans.length === 1) return plans[0]!
   throw new OpError(
     plans.length === 0

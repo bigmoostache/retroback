@@ -9,16 +9,21 @@
  * Nothing here knows a specific operation: commands and flags come from the
  * registry (ops/index.ts), the same one the API serves to the web app.
  *
- *   --api <url>                            talk to a running engine API instead of the database
- *                                          (or set RB_API; the flag wins)
+ *   --api <url>                            the engine API to talk to (or RB_API; default http://127.0.0.1:7979)
+ *   --key <rb_...>                         the API key rb acts with (or RB_KEY). The flags win over the variables.
+ *
+ * rb never touches the database: every operation goes through the API, as the
+ * user of the key, so access checks and the event log always apply.
  *
  * Exit code: 0 on success, 1 on error, 3 when `plan check` finds an error.
  */
 import { camel, kebab } from "./flags.ts"
 import type {
+  ApiKeyView,
   CheckView,
   EventView,
   Gap,
+  MemberView,
   MessageView,
   NodeView,
   OpInfo,
@@ -27,30 +32,26 @@ import type {
   PlanView,
   ReplayView,
   UnlockView,
+  UserView,
 } from "./types.ts"
 
-/** Where operations run: in this process on the database, or on a remote engine API. */
+/** Where operations run: always an engine API, as the user of the API key. */
 interface Backend {
   infos: () => Promise<OpInfo[]>
   run: (name: string, input: Record<string, unknown>) => Promise<OpResponse<unknown>>
-  close: () => Promise<void>
 }
 
-async function localBackend(): Promise<Backend> {
-  // Loaded only here, so remote mode needs neither the database nor its client.
-  const [{ db }, { opInfos, runOp }] = await Promise.all([import("./db.ts"), import("./ops/index.ts")])
-  const ctx = { actor: process.env.USER || "local", via: "cli" }
-  return { infos: async () => opInfos(), run: (name, input) => runOp(name, input, ctx), close: () => db.$disconnect() }
-}
+const DEFAULT_API = "http://127.0.0.1:7979"
 
 class Unreachable extends Error {}
 
-function remoteBackend(base: string): Backend {
+function remoteBackend(base: string, key: string | undefined): Backend {
   const root = base.replace(/\/+$/, "")
+  const auth: Record<string, string> = key ? { authorization: `Bearer ${key}` } : {}
   const request = async (path: string, init?: RequestInit): Promise<OpResponse<unknown>> => {
     let res: Response
     try {
-      res = await fetch(`${root}/api/${path}`, init)
+      res = await fetch(`${root}/api/${path}`, { ...init, headers: { ...auth, ...(init?.headers as Record<string, string> | undefined) } })
     } catch {
       throw new Unreachable(`The engine API does not answer at ${root}.`)
     }
@@ -68,26 +69,24 @@ function remoteBackend(base: string): Backend {
     },
     run: (name, input) =>
       request(name, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }),
-    close: async () => {},
   }
 }
 
-/** `--api <url>` or `--api=<url>`, removed from the arguments. */
-function takeApi(argv: string[]): { api: string | undefined; rest: string[] } {
+/** `--<name> <value>` or `--<name>=<value>`, removed from the arguments. */
+function takeOption(argv: string[], name: string, example: string): { value: string | undefined; rest: string[] } {
   const rest: string[] = []
-  let api: string | undefined
+  let value: string | undefined
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!
-    if (arg === "--api") {
+    if (arg === `--${name}`) {
       const next = argv[i + 1]
-      if (next === undefined || next.startsWith("--")) throw new UsageError("--api needs a URL, e.g. --api http://127.0.0.1:7979.")
-      api = next
+      if (next === undefined || next.startsWith("--")) throw new UsageError(`--${name} needs a value, e.g. --${name} ${example}.`)
+      value = next
       i++
-    } else if (arg.startsWith("--api=")) api = arg.slice("--api=".length)
+    } else if (arg.startsWith(`--${name}=`)) value = arg.slice(name.length + 3)
     else rest.push(arg)
   }
-  if (api !== undefined && !/^https?:\/\/[^/\s]+/.test(api)) throw new UsageError(`--api must be an http(s) URL, got "${api}".`)
-  return { api, rest }
+  return { value, rest }
 }
 
 class UsageError extends Error {}
@@ -251,6 +250,26 @@ function renderOpHelp(info: OpInfo): string {
 /** Picks the rendering from the shape of the operation's result. */
 function render(name: string, result: unknown): string {
   if (name === "message.list") return renderMessages(result as MessageView[])
+  if (name === "user.me") {
+    const me = result as UserView
+    return [`${me.email}${me.name ? `  (${me.name})` : ""}`, ...me.plans.map((p) => `  ${p.plan}  ${p.role}`)].join("\n")
+  }
+  if (name === "plan.members" || name === "plan.share" || name === "plan.unshare") {
+    return table([["EMAIL", "ROLE", "NAME"], ...(result as MemberView[]).map((m) => [m.email, m.role, m.name])])
+  }
+  if (name === "key.list") {
+    const keys = result as ApiKeyView[]
+    if (keys.length === 0) return "No API key. Create one with: rb key create --name <name>"
+    return table([
+      ["NAME", "PREFIX", "CREATED", "LAST USED", "STATE"],
+      ...keys.map((k) => [k.name, k.prefix, k.createdAt.slice(0, 16).replace("T", " "), k.lastUsedAt?.slice(0, 16).replace("T", " ") ?? "never", k.revoked ? "revoked" : "active"]),
+    ])
+  }
+  if (name === "key.create") {
+    const k = result as ApiKeyView
+    return [`Key "${k.name}" created. Its secret, shown only now:`, "", `  ${k.secret}`, "", "Use it with: export RB_KEY=<secret>"].join("\n")
+  }
+  if (name === "key.revoke") return `Key "${(result as ApiKeyView).name}" revoked.`
   if (name === "event.list") {
     const events = result as EventView[]
     if (events.length === 0) return "No event."
@@ -305,7 +324,8 @@ const overview = (infos: OpInfo[]) =>
     "  rb <entity> <verb> [--flag value]...",
     "  rb <entity> <verb> --help",
     "  add --json to get the raw response",
-    "  add --api <url> (or set RB_API) to use a running engine API instead of the database",
+    `  add --api <url> (or set RB_API) to pick the engine API, default ${DEFAULT_API}`,
+    "  add --key <rb_...> (or set RB_KEY): your API key, from the web app or rb key create",
     "",
     renderOps(infos),
   ].join("\n")
@@ -321,21 +341,25 @@ async function main(): Promise<number> {
 
   let argv: string[]
   let api: string | undefined
+  let key: string | undefined
   try {
-    ;({ api, rest: argv } = takeApi(raw))
+    const a = takeOption(raw, "api", DEFAULT_API)
+    const k = takeOption(a.rest, "key", "rb_...")
+    ;({ value: api } = a)
+    ;({ value: key, rest: argv } = k)
   } catch (error) {
     if (error instanceof UsageError) return fail("invalid", error.message)
     throw error
   }
-  api ??= process.env.RB_API || undefined
-  const backend = api ? remoteBackend(api) : await localBackend()
+  api ??= process.env.RB_API || DEFAULT_API
+  key ??= process.env.RB_KEY || undefined
+  if (!/^https?:\/\/[^/\s]+/.test(api)) return fail("invalid", `--api must be an http(s) URL, got "${api}".`)
+  const backend = remoteBackend(api, key)
   try {
     return await runCli(argv, json, backend, fail)
   } catch (error) {
     if (error instanceof Unreachable) return fail("unreachable", error.message)
     throw error
-  } finally {
-    await backend.close()
   }
 }
 
