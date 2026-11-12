@@ -15,6 +15,21 @@ always stays free of loops.
 The same operations drive the CLI (`rb`), the HTTP API and the web app, so
 anything one can do, the others can too. `pnpm check:isometry` checks it.
 
+## Set up your agent
+
+1. Sign in to https://retroback.daharness.com.
+2. Create an API key: Account, then New key. Copy the secret; it is shown once.
+3. Give your agent this instruction:
+
+   ```
+   Read https://retroback.daharness.com/entrypoint.md and follow its protocol, using the API key <PASTE> with the endpoint https://retroback.daharness.com and the plan <PLAN SLUG>.
+   ```
+
+4. You're good to go.
+
+The entrypoint tells the agent how to install and update `rb`, how to write its
+settings once in a `.env` file, and to read `rb op list` first.
+
 ## Install the CLI
 
 ```sh
@@ -22,15 +37,19 @@ npm install -g github:bigmoostache/retroback
 rb help
 ```
 
-`rb` always talks to an engine API, signed in with an API key:
+`rb` always talks to an engine API, signed in with an API key. It reads three
+settings: from the environment, else from the nearest `.env` in the current
+folder or above, else from `~/.config/rb/.env`.
 
 ```sh
-export RB_API=http://host:7979      # default http://127.0.0.1:7979
-export RB_KEY=rb_...                # from the web app, or: rb key create --name laptop
-rb plan list
+RB_API=http://host:7979      # default http://127.0.0.1:7979
+RB_KEY=rb_...                # from the web app, or: rb key create --name laptop
+RB_PLAN=growth               # used by every command when --plan is left out
 ```
 
-`--api` and `--key` win over `RB_API` and `RB_KEY`. Add `--json` to any command for the raw answer.
+`rb config` shows each setting and where it came from. `--api`, `--key` and
+`--plan` win over the settings. Add `--json` to any command for the raw answer.
+`rb op list` prints every command with all its flags.
 `rb` never touches the database, so access checks and the event log always apply.
 
 ## Users and sharing

@@ -11,12 +11,21 @@
  *
  *   --api <url>                            the engine API to talk to (or RB_API; default http://127.0.0.1:7979)
  *   --key <rb_...>                         the API key rb acts with (or RB_KEY). The flags win over the variables.
+ *   --plan <slug>                          on any command that takes a plan; RB_PLAN gives the default
+ *
+ * RB_API, RB_KEY and RB_PLAN are read from the environment, else from the
+ * nearest .env in the current folder or above, else from ~/.config/rb/.env.
+ * `rb config` shows what was found, and where.
  *
  * rb never touches the database: every operation goes through the API, as the
  * user of the key, so access checks and the event log always apply.
  *
  * Exit code: 0 on success, 1 on error, 3 when `plan check` finds an error.
  */
+import { existsSync, readFileSync } from "node:fs"
+import os from "node:os"
+import path from "node:path"
+import { parseEnv } from "node:util"
 import { camel, kebab } from "./flags.ts"
 import { summariseNode } from "./summary.ts"
 import type {
@@ -53,6 +62,51 @@ interface Backend {
 }
 
 const DEFAULT_API = "http://127.0.0.1:7979"
+
+const SETTINGS = ["RB_API", "RB_KEY", "RB_PLAN"] as const
+type Setting = (typeof SETTINGS)[number]
+
+interface Found {
+  value: string | undefined
+  /** Where it came from: a flag, the environment, a .env file, or the default. */
+  from: string
+}
+
+/** The .env files rb reads, nearest first: the current folder and its parents, then ~/.config/rb/.env. */
+function envFiles(): string[] {
+  const files: string[] = []
+  for (let dir = process.cwd(); ; dir = path.dirname(dir)) {
+    files.push(path.join(dir, ".env"))
+    if (path.dirname(dir) === dir) break
+  }
+  const config = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config")
+  files.push(path.join(config, "rb", ".env"))
+  return files.filter((file, i) => files.indexOf(file) === i && existsSync(file))
+}
+
+/**
+ * RB_API, RB_KEY, RB_PLAN: a variable set in the environment wins, even empty
+ * (empty means none); otherwise the first .env file that sets it.
+ */
+function readSettings(): Record<Setting, Found> {
+  const out = {} as Record<Setting, Found>
+  for (const name of SETTINGS) {
+    if (process.env[name] !== undefined) out[name] = { value: process.env[name] || undefined, from: "environment" }
+  }
+  for (const file of envFiles()) {
+    let parsed: Record<string, string | undefined>
+    try {
+      parsed = parseEnv(readFileSync(file, "utf8")) as Record<string, string | undefined>
+    } catch {
+      continue
+    }
+    for (const name of SETTINGS) {
+      if (!out[name] && parsed[name] !== undefined) out[name] = { value: parsed[name] || undefined, from: file }
+    }
+  }
+  for (const name of SETTINGS) out[name] ??= { value: undefined, from: "not set" }
+  return out
+}
 
 class Unreachable extends Error {}
 
@@ -335,6 +389,7 @@ function renderOpHelp(info: OpInfo): string {
 
 /** Picks the rendering from the shape of the operation's result. */
 function render(name: string, result: unknown): string {
+  if (name === "op.list") return [SETTINGS_HELP, "", ...(result as OpInfo[]).map((info) => `## rb ${info.name.replace(".", " ")}\n${renderOpHelp(info)}`)].join("\n\n")
   if (name === "message.list") return renderMessages(result as MessagePage)
   if (name === "node.list") {
     const page = result as NodePage
@@ -414,15 +469,23 @@ function render(name: string, result: unknown): string {
 
 // --------------------------------------------------------------------- main
 
+const SETTINGS_HELP = [
+  "Settings, read from the environment, else the nearest .env (current folder or above), else ~/.config/rb/.env:",
+  `  RB_API   the engine API, default ${DEFAULT_API}          (flag --api)`,
+  "  RB_KEY   your API key rb_..., from the web app or rb key create   (flag --key)",
+  "  RB_PLAN  the plan used when --plan is left out           (flag --plan)",
+  "rb config shows what was found, and where. Add --json to any command for the raw answer.",
+].join("\n")
+
 const overview = (infos: OpInfo[]) =>
   [
     "rb: plan backward from a target to the present.",
     "",
     "  rb <entity> <verb> [--flag value]...",
-    "  rb <entity> <verb> --help",
-    "  add --json to get the raw response",
-    `  add --api <url> (or set RB_API) to pick the engine API, default ${DEFAULT_API}`,
-    "  add --key <rb_...> (or set RB_KEY): your API key, from the web app or rb key create",
+    "  rb <entity> <verb> --help     the flags of one command",
+    "  rb op list                    every command with all its flags",
+    "",
+    SETTINGS_HELP,
     "",
     renderOps(infos),
   ].join("\n")
@@ -448,12 +511,31 @@ async function main(): Promise<number> {
     if (error instanceof UsageError) return fail("invalid", error.message)
     throw error
   }
-  api ??= process.env.RB_API || DEFAULT_API
-  key ??= process.env.RB_KEY || undefined
-  if (!/^https?:\/\/[^/\s]+/.test(api)) return fail("invalid", `--api must be an http(s) URL, got "${api}".`)
+  const settings = readSettings()
+  if (api !== undefined) settings.RB_API = { value: api, from: "--api" }
+  if (key !== undefined) settings.RB_KEY = { value: key, from: "--key" }
+  if (!settings.RB_API.value) settings.RB_API = { value: DEFAULT_API, from: "default" }
+  api = settings.RB_API.value!
+  key = settings.RB_KEY.value
+
+  if (argv.filter((a) => a !== "--json")[0] === "config") {
+    const shown = {
+      RB_API: settings.RB_API,
+      RB_KEY: { ...settings.RB_KEY, value: key ? `${key.slice(0, 7)}…` : undefined },
+      RB_PLAN: settings.RB_PLAN,
+    }
+    if (json) console.log(JSON.stringify({ ok: true, result: shown }, null, 2))
+    else {
+      console.log(table(Object.entries(shown).map(([name, s]) => [name, s.value ?? "(none)", s.from])))
+      console.log(["", "Files read, nearest first:", ...(envFiles().map((f) => `  ${f}`) || []), ...(envFiles().length ? [] : ["  (none)"])].join("\n"))
+    }
+    return 0
+  }
+
+  if (!/^https?:\/\/[^/\s]+/.test(api)) return fail("invalid", `RB_API (${settings.RB_API.from}) must be an http(s) URL, got "${api}".`)
   const backend = remoteBackend(api, key)
   try {
-    return await runCli(argv, json, backend, fail)
+    return await runCli(argv, json, backend, fail, settings.RB_PLAN.value)
   } catch (error) {
     if (error instanceof Unreachable) return fail("unreachable", error.message)
     throw error
@@ -465,6 +547,7 @@ async function runCli(
   json: boolean,
   backend: Backend,
   fail: (code: string, message: string) => number,
+  defaultPlan: string | undefined,
 ): Promise<number> {
   const help = argv.includes("--help") || argv.includes("-h")
   const args = argv.filter((a) => a !== "--json" && a !== "--help" && a !== "-h")
@@ -498,6 +581,11 @@ async function runCli(
   } catch (error) {
     if (error instanceof UsageError) return fail("invalid", `${error.message} Usage: ${info.cli}`)
     throw error
+  }
+  // RB_PLAN fills in --plan where it may be left out. A required --plan (plan delete) is never guessed.
+  const planProp = info.input.properties?.["plan"]
+  if (defaultPlan && planProp && !(info.input.required ?? []).includes("plan") && input["plan"] === undefined) {
+    input["plan"] = defaultPlan
   }
 
   const response = await backend.run(name, input)

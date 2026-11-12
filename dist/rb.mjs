@@ -1,5 +1,11 @@
 #!/usr/bin/env node
 
+// engine/src/cli.ts
+import { existsSync, readFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { parseEnv } from "node:util";
+
 // engine/src/flags.ts
 var kebab = (s) => s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 var camel = (s) => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
@@ -25,15 +31,45 @@ var summariseNode = (n) => ({
 
 // engine/src/cli.ts
 var DEFAULT_API = "http://127.0.0.1:7979";
+var SETTINGS = ["RB_API", "RB_KEY", "RB_PLAN"];
+function envFiles() {
+  const files = [];
+  for (let dir = process.cwd(); ; dir = path.dirname(dir)) {
+    files.push(path.join(dir, ".env"));
+    if (path.dirname(dir) === dir) break;
+  }
+  const config = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config");
+  files.push(path.join(config, "rb", ".env"));
+  return files.filter((file, i) => files.indexOf(file) === i && existsSync(file));
+}
+function readSettings() {
+  const out = {};
+  for (const name of SETTINGS) {
+    if (process.env[name] !== void 0) out[name] = { value: process.env[name] || void 0, from: "environment" };
+  }
+  for (const file of envFiles()) {
+    let parsed;
+    try {
+      parsed = parseEnv(readFileSync(file, "utf8"));
+    } catch {
+      continue;
+    }
+    for (const name of SETTINGS) {
+      if (!out[name] && parsed[name] !== void 0) out[name] = { value: parsed[name] || void 0, from: file };
+    }
+  }
+  for (const name of SETTINGS) out[name] ??= { value: void 0, from: "not set" };
+  return out;
+}
 var Unreachable = class extends Error {
 };
 function remoteBackend(base, key) {
   const root = base.replace(/\/+$/, "");
   const auth = key ? { authorization: `Bearer ${key}` } : {};
-  const request = async (path, init) => {
+  const request = async (path2, init) => {
     let res;
     try {
-      res = await fetch(`${root}/api/${path}`, { ...init, headers: { ...auth, ...init?.headers } });
+      res = await fetch(`${root}/api/${path2}`, { ...init, headers: { ...auth, ...init?.headers } });
     } catch {
       throw new Unreachable(`The engine API does not answer at ${root}.`);
     }
@@ -261,6 +297,8 @@ function renderOpHelp(info) {
   return [info.summary, "", info.cli, ...rows.length ? ["", table(rows)] : []].join("\n");
 }
 function render(name, result) {
+  if (name === "op.list") return [SETTINGS_HELP, "", ...result.map((info) => `## rb ${info.name.replace(".", " ")}
+${renderOpHelp(info)}`)].join("\n\n");
   if (name === "message.list") return renderMessages(result);
   if (name === "node.list") {
     const page = result;
@@ -336,14 +374,21 @@ The history ends with the plan deleted.`;
   }
   return JSON.stringify(result, null, 2);
 }
+var SETTINGS_HELP = [
+  "Settings, read from the environment, else the nearest .env (current folder or above), else ~/.config/rb/.env:",
+  `  RB_API   the engine API, default ${DEFAULT_API}          (flag --api)`,
+  "  RB_KEY   your API key rb_..., from the web app or rb key create   (flag --key)",
+  "  RB_PLAN  the plan used when --plan is left out           (flag --plan)",
+  "rb config shows what was found, and where. Add --json to any command for the raw answer."
+].join("\n");
 var overview = (infos) => [
   "rb: plan backward from a target to the present.",
   "",
   "  rb <entity> <verb> [--flag value]...",
-  "  rb <entity> <verb> --help",
-  "  add --json to get the raw response",
-  `  add --api <url> (or set RB_API) to pick the engine API, default ${DEFAULT_API}`,
-  "  add --key <rb_...> (or set RB_KEY): your API key, from the web app or rb key create",
+  "  rb <entity> <verb> --help     the flags of one command",
+  "  rb op list                    every command with all its flags",
+  "",
+  SETTINGS_HELP,
   "",
   renderOps(infos)
 ].join("\n");
@@ -367,18 +412,35 @@ async function main() {
     if (error instanceof UsageError) return fail("invalid", error.message);
     throw error;
   }
-  api ??= process.env.RB_API || DEFAULT_API;
-  key ??= process.env.RB_KEY || void 0;
-  if (!/^https?:\/\/[^/\s]+/.test(api)) return fail("invalid", `--api must be an http(s) URL, got "${api}".`);
+  const settings = readSettings();
+  if (api !== void 0) settings.RB_API = { value: api, from: "--api" };
+  if (key !== void 0) settings.RB_KEY = { value: key, from: "--key" };
+  if (!settings.RB_API.value) settings.RB_API = { value: DEFAULT_API, from: "default" };
+  api = settings.RB_API.value;
+  key = settings.RB_KEY.value;
+  if (argv.filter((a) => a !== "--json")[0] === "config") {
+    const shown = {
+      RB_API: settings.RB_API,
+      RB_KEY: { ...settings.RB_KEY, value: key ? `${key.slice(0, 7)}\u2026` : void 0 },
+      RB_PLAN: settings.RB_PLAN
+    };
+    if (json) console.log(JSON.stringify({ ok: true, result: shown }, null, 2));
+    else {
+      console.log(table(Object.entries(shown).map(([name, s]) => [name, s.value ?? "(none)", s.from])));
+      console.log(["", "Files read, nearest first:", ...envFiles().map((f) => `  ${f}`) || [], ...envFiles().length ? [] : ["  (none)"]].join("\n"));
+    }
+    return 0;
+  }
+  if (!/^https?:\/\/[^/\s]+/.test(api)) return fail("invalid", `RB_API (${settings.RB_API.from}) must be an http(s) URL, got "${api}".`);
   const backend = remoteBackend(api, key);
   try {
-    return await runCli(argv, json, backend, fail);
+    return await runCli(argv, json, backend, fail, settings.RB_PLAN.value);
   } catch (error) {
     if (error instanceof Unreachable) return fail("unreachable", error.message);
     throw error;
   }
 }
-async function runCli(argv, json, backend, fail) {
+async function runCli(argv, json, backend, fail, defaultPlan) {
   const help = argv.includes("--help") || argv.includes("-h");
   const args = argv.filter((a) => a !== "--json" && a !== "--help" && a !== "-h");
   const infos = await backend.infos();
@@ -407,6 +469,10 @@ async function runCli(argv, json, backend, fail) {
   } catch (error) {
     if (error instanceof UsageError) return fail("invalid", `${error.message} Usage: ${info.cli}`);
     throw error;
+  }
+  const planProp = info.input.properties?.["plan"];
+  if (defaultPlan && planProp && !(info.input.required ?? []).includes("plan") && input["plan"] === void 0) {
+    input["plan"] = defaultPlan;
   }
   const response = await backend.run(name, input);
   if (!response.ok) return fail(response.error.code, response.error.message);

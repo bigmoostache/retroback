@@ -160,7 +160,7 @@ const viaCli: Via = (op, input, key) => {
   const flags = Object.entries(input).flatMap(([k, value]) =>
     (Array.isArray(value) ? value : [value]).flatMap((item) => [`--${kebab(k)}`, String(item)]),
   )
-  const env = { ...process.env, RB_API: "", RB_KEY: "" }
+  const env = { ...process.env, RB_API: "", RB_KEY: "", RB_PLAN: "" }
   const args = [...op.split("."), ...flags, "--api", API, ...(key ? ["--key", key] : []), "--json"]
   return new Promise((resolve, reject) => {
     execFile(RB, args, { maxBuffer: 16_000_000, env }, (error, stdout, stderr) => {
