@@ -34,6 +34,27 @@ export interface ResourceView {
   name: string
   quantity: number
   unit: string
+  /** True when the node brings this in once done (a funding round brings capital) instead of using it. */
+  provides: boolean
+}
+
+export type ObstacleStatus = "open" | "fixed"
+
+/** What could stop a node, and how it is handled. */
+export interface ObstacleView {
+  slug: string
+  text: string
+  /** How it is solved or worked around. Empty when not known yet. */
+  fix: string
+  status: ObstacleStatus
+}
+
+/** When a node can start and finish at the earliest, as ISO dates (YYYY-MM-DD). */
+export interface Schedule {
+  /** Once every node it requires is finished, and not before the plan starts. Null when a duration before it is unknown. */
+  start: string | null
+  /** Start plus duration. Null when unknown. */
+  finish: string | null
 }
 
 export interface MessageView {
@@ -53,19 +74,28 @@ export interface NodeView {
   seq: number
   title: string
   description: string
-  /** Metric value reached once the node is done. */
-  level: number
+  /** Metric value reached once the node is done. Null for a milestone: a step that moves no metric. */
+  level: number | null
   status: NodeStatus
   /** How big the node is, from 0 (tiny) to 100 (largest). */
   size: number
+  /** How long the work takes, in days. Null: unknown. */
+  duration: number | null
+  /** Date it must be done by (YYYY-MM-DD). Null: none. */
+  due: string | null
+  schedule: Schedule
+  /** Not done, every node it requires is done, and its start date is reached. */
+  ready: boolean
   criteria: CheckItem[]
   requirements: RequirementView[]
   resources: ResourceView[]
+  obstacles: ObstacleView[]
   /** Former nodes this one requires: the providers of its requirements. */
   dependsOn: string[]
   /** Later nodes whose requirements this one provides. */
   enables: string[]
-  gap: Gap
+  /** Null for a milestone. */
+  gap: Gap | null
   /** Oldest first. */
   messages: MessageView[]
 }
@@ -82,15 +112,20 @@ export interface NodeSummary {
   ref: string
   seq: number
   title: string
-  level: number
+  level: number | null
   status: NodeStatus
   size: number
-  gap: Gap
+  gap: Gap | null
+  schedule: Schedule
+  due: string | null
+  ready: boolean
   dependsOn: string[]
   enables: string[]
   criteria: Tally
   requirements: Tally
   resources: number
+  /** Open obstacles / all of them. */
+  obstacles: { total: number; open: number }
   messages: number
 }
 
@@ -129,6 +164,23 @@ export interface ItemList<T> {
   plan: string
   node: string
   items: T[]
+}
+
+/** One node of `node tree`, with what it requires down to the asked depth. */
+export interface TreeNode extends NodeSummary {
+  /** Nodes it requires, one level deeper. Empty at the last level; `cut` tells whether more exist. */
+  requires: TreeNode[]
+  /** True when it requires more nodes than shown (depth or size limit reached). */
+  cut: boolean
+}
+
+/** What `node tree` answers. */
+export interface TreeView {
+  plan: string
+  root: TreeNode
+  depth: number
+  /** How many nodes are shown; a node reached twice is shown once in full, then as a bare line. */
+  shown: number
 }
 
 /** What `node unlock` answers. */

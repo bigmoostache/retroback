@@ -34,6 +34,11 @@ model Plan {
   targetValue  Float
   /// Maximum allowed gap between a node and what it depends on, in percent.
   gapPercent   Float    @default(1)
+  /// Day work starts: nodes are scheduled from it. Null: from today.
+  start        DateTime?
+  /// Cash at hand at the start, in cashUnit. Spending beyond it and what nodes bring in fails the check.
+  cash         Float    @default(0)
+  cashUnit     String   @default("EUR")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   nodes        Node[]
@@ -105,9 +110,14 @@ model Node {
   seq          Int
   title        String
   description  String         @default("")
-  /// Metric value reached once this node is done.
-  level        Float
+  /// Metric value reached once this node is done. Null for a milestone: a step that moves no metric.
+  level        Float?
   status       NodeStatus     @default(todo)
+  /// How long the work takes, in days. Null: unknown.
+  duration     Float?
+  /// Date it must be done by. Null: none.
+  due          DateTime?
+  obstacles    Obstacle[]
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
   criteria     Criterion[]
@@ -171,6 +181,30 @@ model ResourceNeed {
   name     String
   quantity Float
   unit     String
+  /// True when the node brings this in once done (a funding round brings capital) instead of using it.
+  provides Boolean @default(false)
+
+  @@unique([nodeId, slug])
+  @@index([nodeId, position])
+}
+
+enum ObstacleStatus {
+  open
+  fixed
+}
+
+/// What could stop the node, and how it is handled. Addressed by its slug, unique in the node.
+model Obstacle {
+  id       String         @id @default(cuid())
+  nodeId   String
+  node     Node           @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  slug     String
+  /// Display order only: never used to address the obstacle.
+  position Int
+  text     String
+  /// How it is solved or worked around.
+  fix      String         @default("")
+  status   ObstacleStatus @default(open)
 
   @@unique([nodeId, slug])
   @@index([nodeId, position])

@@ -87,7 +87,36 @@ is the reference; \`rb <entity> <verb> --help\` shows one command.
 - Build backward: \`rb node create --title ...\` makes the target, then
   \`rb node create --enables N1 ...\` makes what N1 requires. \`rb plan check\`
   checks the 1% rule, criteria and resources. \`rb node unlock --ref N1\`
-  says what to tackle now.
+  says what to tackle now; \`rb node list --ready\` lists what can start today.
+- Many changes at once: write the steps in a YAML file and run
+  \`rb apply plan.yaml\`. All are applied or none. A step names the node it
+  creates with \`as: funding\`; later steps refer to it as \`$funding\`:
+
+  \`\`\`yaml
+  - op: node.create
+    as: funding
+    title: Seed round closed
+    milestone: true        # moves no metric: no level, no gap check
+    enables: [N3]
+    duration: 30           # days
+    due: 2027-03-01
+  - op: obstacle.add
+    node: $funding
+    text: Lead investor walks away.
+    fix: Two backup investors in the pipeline.
+  - op: resource.add
+    node: $funding
+    kind: capital
+    name: seed
+    quantity: 2000000
+    unit: EUR
+    provides: true         # brought in once done, not spent
+  \`\`\`
+- List what could stop each node: \`rb obstacle add --node N3 --text ... --fix ...\`.
+  \`rb plan check\` warns on open nodes with none, and fails on loops, late
+  nodes (earliest finish after \`--due\`) and spending beyond the cash at hand
+  (\`rb plan update --cash 50000 --cash-unit EUR --start 2027-01-01\`).
+- \`rb node tree --ref N1 --depth 2\` shows what a node requires, as a tree.
 - Every change is logged with who made it: \`rb event list\`.
 
 ## Without rb

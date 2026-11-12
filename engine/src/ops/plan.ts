@@ -6,6 +6,14 @@ import { briefOf, loadPlan, planOf, summarise } from "../views.ts"
 import { defineOp, OpError, planFlag } from "./define.ts"
 import { pageFlags } from "./node.ts"
 
+const dayFlag = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "a date as YYYY-MM-DD")
+  .describe("Day work starts, YYYY-MM-DD: nodes are scheduled from it. Default: today.")
+const cashFlag = z.number().min(0).describe("Cash at hand at the start, in the cash unit. Spending beyond it and what nodes bring in fails the check.")
+const cashUnitFlag = z.string().min(1).describe("Unit of the cash, e.g. EUR. Only resources in this unit count as cash.")
+const toDay = (day: string) => new Date(`${day}T00:00:00Z`)
+
 function assertScale(s: { presentValue: number; targetValue: number; gapPercent: number }) {
   if (s.presentValue === s.targetValue) {
     throw new OpError("The present value and the target value are equal: there is nothing to plan.")
@@ -66,8 +74,11 @@ export const planOps = [
       targetValue: z.number().describe("Value of the metric at the target."),
       gapPercent: z.number().default(1).describe("Largest step allowed between a node and what it starts from, in percent."),
       slug: z.string().optional().describe("Short handle. Derived from the title when omitted."),
+      start: dayFlag.optional(),
+      cash: cashFlag.default(0),
+      cashUnit: cashUnitFlag.default("EUR"),
     }),
-    run: async (input) => {
+    run: async ({ start, ...input }) => {
       assertScale(input)
       const user = currentUser()
       const slug = slugify(input.slug ?? input.title)
@@ -79,6 +90,7 @@ export const planOps = [
         data: {
           ...input,
           slug,
+          start: start ? toDay(start) : null,
           // The creator is the owner, the only one. The engine itself creates ownerless plans (tests, maintenance).
           ...(user ? { members: { create: { userId: user.id, role: "owner" as const } } } : {}),
         },
@@ -100,15 +112,23 @@ export const planOps = [
       presentValue: z.number().optional().describe("Value of the metric today."),
       targetValue: z.number().optional().describe("Value of the metric at the target."),
       gapPercent: z.number().optional().describe("Largest step allowed, in percent."),
+      start: dayFlag.optional(),
+      noStart: z.boolean().optional().describe("Clear the start day: schedule from today."),
+      cash: cashFlag.optional(),
+      cashUnit: cashUnitFlag.optional(),
     }),
-    run: async ({ plan, ...data }) => {
+    run: async ({ plan, start, noStart, ...data }) => {
+      if (noStart && start !== undefined) throw new OpError("Pass --start or --no-start, not both.")
       const current = await planOf(plan)
       assertScale({
         presentValue: data.presentValue ?? current.presentValue,
         targetValue: data.targetValue ?? current.targetValue,
         gapPercent: data.gapPercent ?? current.gapPercent,
       })
-      await db.plan.update({ where: { id: current.id }, data })
+      await db.plan.update({
+        where: { id: current.id },
+        data: { ...data, ...(noStart ? { start: null } : start !== undefined ? { start: toDay(start) } : {}) },
+      })
       return briefOf(await loadPlan(current.slug))
     },
   }),

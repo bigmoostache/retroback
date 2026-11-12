@@ -85,7 +85,7 @@ export function layoutGraph(plan: PlanView): GraphLayout {
   const nodes = new Map(plan.nodes.map((n) => [n.ref, n]))
   const dir = plan.targetValue >= plan.presentValue ? 1 : -1
   // Same test as the engine's check (rules.ts): the node reaches the target value.
-  const atTarget = (n: NodeView) => dir * (n.level - plan.targetValue) >= -1e-9
+  const atTarget = (n: NodeView) => n.level !== null && dir * (n.level - plan.targetValue) >= -1e-9
 
   /** What each item leads to, without the links implied by a longer path. */
   const reduced = reducedLinks(new Map(plan.nodes.map((n) => [n.ref, n.dependsOn])))

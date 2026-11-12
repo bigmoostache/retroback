@@ -8,7 +8,7 @@ import { uniqueSlug } from "../slug.ts"
 import type { ItemList, NodeView, ResourceTotals } from "../types.ts"
 import { loadNode, loadPlan, nodeOf } from "../views.ts"
 import { defineOp, OpError, planFlag } from "./define.ts"
-import { assertNoLoop } from "./node.ts"
+import { assertNoLoop, assertOrder } from "./node.ts"
 
 const nodeFlag = z.string().describe("Node ref, e.g. N3.")
 const slugFlag = (what: string) =>
@@ -145,6 +145,7 @@ const requirementRows = (nodeId: string) => db.requirement.findMany({ where: { n
 async function providerFor(found: Found, ref: string) {
   const former = await nodeOf(found.plan.slug, ref)
   await assertNoLoop(found.plan.id, found.node, former.node)
+  assertOrder(found.plan, former.node, found.node)
   return former.node
 }
 
@@ -259,6 +260,10 @@ const resourceOps = [
       name: z.string().min(1).describe("What exactly, e.g. backend engineer, GPU A100, cash."),
       quantity: z.number().positive().describe("How much."),
       unit: z.string().min(1).describe("Unit of the quantity, e.g. person-days, hours, EUR."),
+      provides: z
+        .boolean()
+        .default(false)
+        .describe("The node brings this in once done (e.g. a funding round brings cash) instead of using it."),
       slug: newSlugFlag("name"),
     }),
     run: async ({ plan, node, slug, ...data }) => {
@@ -287,6 +292,7 @@ const resourceOps = [
       name: z.string().min(1).optional().describe("What exactly."),
       quantity: z.number().positive().optional().describe("How much."),
       unit: z.string().min(1).optional().describe("Unit of the quantity."),
+      provides: z.boolean().optional().describe("true when the node brings it in, false when it uses it."),
       slug: renameFlag,
     }),
     run: async ({ plan, node, resource, slug, ...data }) => {
@@ -314,4 +320,81 @@ const resourceOps = [
   }),
 ]
 
-export const itemOps = [...criterionOps, ...requirementOps, ...resourceOps]
+// --------------------------------------------------------------- obstacles
+
+const obstacleRows = (nodeId: string) => db.obstacle.findMany({ where: { nodeId }, ...byPosition })
+const obstacleStatus = z.enum(["open", "fixed"])
+
+const obstacleOps = [
+  defineOp({
+    name: "obstacle.list",
+    summary: "List what could stop a node: slug, text, fix, open or fixed.",
+    mutates: false,
+    input: z.strictObject({ plan: planFlag, node: nodeFlag }),
+    run: async ({ plan, node }) => listOf(plan, node, (n) => n.obstacles),
+  }),
+  defineOp({
+    name: "obstacle.add",
+    summary: "Add an obstacle to a node: what could stop it, and how it is solved or worked around.",
+    mutates: true,
+    input: z.strictObject({
+      plan: planFlag,
+      node: nodeFlag,
+      text: z.string().min(1).describe("What could stop the node."),
+      fix: z.string().default("").describe("How it is solved or worked around. Empty when not known yet."),
+      status: obstacleStatus.default("open").describe("open until it is handled, then fixed."),
+      slug: newSlugFlag("text"),
+    }),
+    run: async ({ plan, node, slug, ...data }) => {
+      const found = await nodeOf(plan, node)
+      const rows = await obstacleRows(found.node.id)
+      await db.obstacle.create({
+        data: {
+          ...data,
+          nodeId: found.node.id,
+          position: nextPosition(rows),
+          slug: slugFor(rows, slug, data.text, "obstacle", found.node.ref),
+        },
+      })
+      return done(found)
+    },
+  }),
+  defineOp({
+    name: "obstacle.update",
+    summary: "Reword an obstacle, change its fix, mark it open or fixed, or rename its slug.",
+    mutates: true,
+    input: z.strictObject({
+      plan: planFlag,
+      node: nodeFlag,
+      obstacle: slugFlag("obstacle"),
+      text: z.string().min(1).optional().describe("What could stop the node."),
+      fix: z.string().optional().describe("How it is solved or worked around."),
+      status: obstacleStatus.optional().describe("open or fixed."),
+      slug: renameFlag,
+    }),
+    run: async ({ plan, node, obstacle, slug, ...data }) => {
+      const found = await nodeOf(plan, node)
+      const rows = await obstacleRows(found.node.id)
+      const row = rowWith(rows, obstacle, "obstacle", found.node.ref)
+      await db.obstacle.update({
+        where: { id: row.id },
+        data: { ...data, ...renamed(rows, row, slug, "obstacle", found.node.ref) },
+      })
+      return done(found)
+    },
+  }),
+  defineOp({
+    name: "obstacle.remove",
+    summary: "Remove an obstacle from a node.",
+    mutates: true,
+    input: z.strictObject({ plan: planFlag, node: nodeFlag, obstacle: slugFlag("obstacle") }),
+    run: async ({ plan, node, obstacle }) => {
+      const found = await nodeOf(plan, node)
+      const row = rowWith(await obstacleRows(found.node.id), obstacle, "obstacle", found.node.ref)
+      await db.obstacle.delete({ where: { id: row.id } })
+      return done(found)
+    },
+  }),
+]
+
+export const itemOps = [...criterionOps, ...requirementOps, ...resourceOps, ...obstacleOps]

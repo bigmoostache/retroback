@@ -10,8 +10,11 @@
  * here fails the check.
  */
 import { execFile } from "node:child_process"
+import { mkdtempSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import path from "node:path"
 import { isDeepStrictEqual } from "node:util"
+import { stringify as stringifyYaml } from "yaml"
 import { hashSecret, newSecret, userByEmail } from "./access.ts"
 import { db } from "./db.ts"
 import { API_PORT, DEV } from "./env.ts"
@@ -80,6 +83,44 @@ const STEPS: Step[] = [
   ["resource.add", { ...n2, kind: "capital", name: "licence", quantity: 300, unit: "EUR" }],
   ["resource.update", { ...n2, resource: "analyst", quantity: 3 }],
   ["resource.remove", { ...n2, resource: "licence" }],
+  // A batch: all or nothing, later steps use the nodes created by earlier ones ($name).
+  [
+    "batch.apply",
+    {
+      ...plan,
+      steps: [
+        { op: "node.create", as: "funding", title: "Funding closed", milestone: true, enables: ["N3"], duration: 10, due: "2099-01-01" },
+        { op: "obstacle.add", node: "$funding", text: "Bank delays the transfer.", fix: "Bridge loan ready." },
+        { op: "resource.add", node: "$funding", kind: "capital", name: "seed", quantity: 500, unit: "EUR", provides: true },
+        { op: "node.create", as: "pitch", title: "Pitch deck", enables: ["$funding"], level: 100.2, duration: 3 },
+      ],
+    },
+  ],
+  // The second step fails, so the first is undone: N7 must not exist.
+  [
+    "batch.apply",
+    { ...plan, steps: [{ op: "node.create", title: "Rolled back", level: 100.1 }, { op: "obstacle.add", node: "N99", text: "x" }] },
+    "not_found",
+  ],
+  ["node.show", { plan: PLAN, ref: "N7" }, "not_found"],
+  ["batch.apply", { ...plan, steps: [{ op: "node.create", as: "x", title: "Undone" }, { op: "node.show", ref: "$y" }] }, "invalid"],
+  ["node.create", { ...plan, title: "Both", milestone: true, level: 101 }, "invalid"],
+  ["obstacle.list", { plan: PLAN, node: "N5" }],
+  ["obstacle.add", { plan: PLAN, node: "N5", text: "Lead investor walks away.", slug: "lead" }],
+  ["obstacle.add", { plan: PLAN, node: "N5", text: "Again.", slug: "lead" }, "conflict"],
+  ["obstacle.update", { plan: PLAN, node: "N5", obstacle: "bank-delays-the-transfer", status: "fixed" }],
+  ["obstacle.remove", { plan: PLAN, node: "N5", obstacle: "lead" }],
+  ["obstacle.remove", { plan: PLAN, node: "N5", obstacle: "lead" }, "not_found"],
+  ["node.update", { plan: PLAN, ref: "N6", due: "2099-06-01", size: 10 }],
+  ["node.update", { plan: PLAN, ref: "N6", due: "2099-06-01", noDue: true }, "invalid"],
+  // A provider beyond the node it provides for is refused.
+  ["requirement.add", { plan: PLAN, node: "N4", text: "Backward.", providedBy: "N2" }, "conflict"],
+  ["node.tree", { plan: PLAN, ref: "N1", depth: 4 }],
+  ["node.tree", { plan: PLAN, ref: "N1", depth: 9 }, "invalid"],
+  ["node.list", { ...plan, ready: true }],
+  ["plan.update", { ...plan, start: "2099-01-01", cash: 100, cashUnit: "EUR" }],
+  ["plan.update", { ...plan, start: "2099-01-01", noStart: true }, "invalid"],
+  ["plan.update", { ...plan, noStart: true }],
   // Sharing: the owner gives access, the contributor works, may not delete or share, then leaves.
   ["plan.share", { ...plan, email: STRANGER }],
   ["plan.share", { ...plan, email: STRANGER }, "conflict"],
@@ -155,13 +196,22 @@ interface Answer {
 type Keys = Record<Who, string | undefined>
 type Via = (op: string, input: Input, key: string | undefined) => Promise<Answer>
 
-/** `rb --api <API> --key <key> ... --json`. */
+/** `rb --api <API> --key <key> ... --json`. A batch goes through `rb apply <file>`, as agents use it. */
 const viaCli: Via = (op, input, key) => {
-  const flags = Object.entries(input).flatMap(([k, value]) =>
-    (Array.isArray(value) ? value : [value]).flatMap((item) => [`--${kebab(k)}`, String(item)]),
-  )
+  let words: string[]
+  if (op === "batch.apply") {
+    const { steps, ...rest } = input
+    const file = path.join(mkdtempSync(path.join(tmpdir(), "rb-iso-")), "steps.yaml")
+    writeFileSync(file, stringifyYaml(steps))
+    words = ["apply", file, ...Object.entries(rest).flatMap(([k, v]) => [`--${kebab(k)}`, String(v)])]
+  } else {
+    const flags = Object.entries(input).flatMap(([k, value]) =>
+      (Array.isArray(value) ? value : [value]).flatMap((item) => [`--${kebab(k)}`, String(item)]),
+    )
+    words = [...op.split("."), ...flags]
+  }
   const env = { ...process.env, RB_API: "", RB_KEY: "", RB_PLAN: "" }
-  const args = [...op.split("."), ...flags, "--api", API, ...(key ? ["--key", key] : []), "--json"]
+  const args = [...words, "--api", API, ...(key ? ["--key", key] : []), "--json"]
   return new Promise((resolve, reject) => {
     execFile(RB, args, { maxBuffer: 16_000_000, env }, (error, stdout, stderr) => {
       try {

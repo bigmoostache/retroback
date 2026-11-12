@@ -3,7 +3,15 @@
  * what the screen already knows filled in; the dialog shows its `rb` command.
  * Items are addressed by slug, messages by id: never by position.
  */
-import type { CheckItem, MessageView, NodeView, PlanSummary, RequirementView, ResourceView } from "@engine/types.ts"
+import type {
+  CheckItem,
+  MessageView,
+  NodeView,
+  ObstacleView,
+  PlanSummary,
+  RequirementView,
+  ResourceView,
+} from "@engine/types.ts"
 import type { Input } from "@/lib/api"
 
 export interface OpRequest {
@@ -91,9 +99,11 @@ export const nodeUpdate = (node: NodeView): OpRequest => ({
   initial: {
     title: node.title,
     description: node.description,
-    level: node.level,
+    level: node.level ?? undefined,
     status: node.status,
     size: node.size,
+    duration: node.duration ?? undefined,
+    due: node.due ?? undefined,
   },
   changesOnly: true,
   submitLabel: "Save",
@@ -163,7 +173,14 @@ export const resourceUpdate = (node: NodeView, resource: ResourceView): OpReques
   op: "resource.update",
   title: `Edit resource ${resource.slug} of ${node.ref}`,
   fixed: { ...at(node), resource: resource.slug },
-  initial: { kind: resource.kind, name: resource.name, quantity: resource.quantity, unit: resource.unit, slug: resource.slug },
+  initial: {
+    kind: resource.kind,
+    name: resource.name,
+    quantity: resource.quantity,
+    unit: resource.unit,
+    provides: resource.provides,
+    slug: resource.slug,
+  },
   changesOnly: true,
   submitLabel: "Save",
 })
@@ -173,6 +190,32 @@ export const resourceRemove = (node: NodeView, resource: ResourceView): OpReques
   title: `Remove resource ${resource.slug} from ${node.ref}?`,
   description: `${resource.kind}: ${resource.name}`,
   fixed: { ...at(node), resource: resource.slug },
+  destructive: true,
+  submitLabel: "Remove",
+})
+
+export const obstacleAdd = (node: NodeView): OpRequest => ({
+  op: "obstacle.add",
+  title: `Add an obstacle to ${node.ref}`,
+  description: "What could stop it, and how it is solved or worked around.",
+  fixed: at(node),
+  submitLabel: "Add",
+})
+
+export const obstacleUpdate = (node: NodeView, o: ObstacleView): OpRequest => ({
+  op: "obstacle.update",
+  title: `Edit obstacle ${o.slug} of ${node.ref}`,
+  fixed: { ...at(node), obstacle: o.slug },
+  initial: { text: o.text, fix: o.fix, status: o.status, slug: o.slug },
+  changesOnly: true,
+  submitLabel: "Save",
+})
+
+export const obstacleRemove = (node: NodeView, o: ObstacleView): OpRequest => ({
+  op: "obstacle.remove",
+  title: `Remove obstacle ${o.slug} from ${node.ref}?`,
+  description: o.text,
+  fixed: { ...at(node), obstacle: o.slug },
   destructive: true,
   submitLabel: "Remove",
 })

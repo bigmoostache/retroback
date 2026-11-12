@@ -7,7 +7,7 @@ import { StatusBadge } from "@/components/plan/StatusBadge"
 import { SelectionPill } from "@/components/shell/chrome/SelectionPill"
 import { IconAction } from "@/components/ui/IconAction"
 import { toCommand } from "@/lib/api"
-import { gapText, num } from "@/lib/format"
+import { dayText, gapText, num } from "@/lib/format"
 import {
   criterionAdd,
   criterionUpdate,
@@ -17,6 +17,9 @@ import {
   messageUpdate,
   nodeDelete,
   nodeUpdate,
+  obstacleAdd,
+  obstacleRemove,
+  obstacleUpdate,
   requirementAdd,
   requirementUpdate,
   resourceAdd,
@@ -189,6 +192,7 @@ export function NodeDetail({
   // Same answer as `rb node unlock`: both run graph.ts on the same links.
   const unlocked = unlock(plan.nodes, prereqs, node.ref)
   const sizeLeft = unlockSize(plan.nodes, prereqs, node.ref)
+  const late = node.due !== null && node.schedule.finish !== null && node.schedule.finish > node.due
   const link = (ref: string) => (
     <button
       type="button"
@@ -221,13 +225,28 @@ export function NodeDetail({
           </div>
           <div className="flex items-center gap-3">
             <div className="flex min-w-0 flex-col font-mono text-subhead tabular-nums">
-              <span className="text-foreground">
-                {num(node.level)} {plan.unit}
+              {node.level === null || node.gap === null ? (
+                <span className="text-muted-foreground italic">milestone: moves no metric</span>
+              ) : (
+                <>
+                  <span className="text-foreground">
+                    {num(node.level)} {plan.unit}
+                  </span>
+                  <span className={node.gap.ok ? "text-ok" : "text-danger"}>
+                    {gapText(node.gap)} from {node.gap.from} ({num(node.gap.base)})
+                  </span>
+                </>
+              )}
+              <span className="text-muted-foreground">
+                size {node.size}/100
+                {node.duration !== null && `, ${num(node.duration)} d`}
               </span>
-              <span className={node.gap.ok ? "text-ok" : "text-danger"}>
-                {gapText(node.gap)} from {node.gap.from} ({num(node.gap.base)})
+              <span data-schedule className={late ? "text-danger" : "text-muted-foreground"}>
+                {node.schedule.start ? `start ${dayText(node.schedule.start)}` : "start unknown"}
+                {node.schedule.finish && ` → ${dayText(node.schedule.finish)}`}
+                {node.due && `, due ${dayText(node.due)}`}
               </span>
-              <span className="text-muted-foreground">size {node.size}/100</span>
+              {node.ready && <span className="text-ok">ready: can start today</span>}
             </div>
             <StatusSwitch
               status={node.status}
@@ -278,6 +297,47 @@ export function NodeDetail({
                 icon={X}
                 onClick={() => ask(itemRemove("requirement", node, item))}
               />
+            </li>
+          ))}
+        </Section>
+
+        <Section
+          title="Obstacles"
+          count={node.obstacles.length}
+          note={node.obstacles.length > 0 ? `${node.obstacles.filter((o) => o.status === "open").length} open` : undefined}
+          empty="None listed. What could stop it?"
+          add={{ label: "Add an obstacle", command: "rb obstacle add", run: () => ask(obstacleAdd(node)) }}
+        >
+          {node.obstacles.map((o) => (
+            <li key={o.slug} data-obstacle={o.slug} className="flex items-start gap-2 px-2 py-1">
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={o.status === "fixed"}
+                aria-label={`obstacle ${o.slug} fixed`}
+                onClick={() =>
+                  void run("obstacle.update", {
+                    plan: node.plan,
+                    node: node.ref,
+                    obstacle: o.slug,
+                    status: o.status === "fixed" ? "open" : "fixed",
+                  })
+                }
+                className={cn(
+                  "mt-1 flex size-4 shrink-0 items-center justify-center rounded-sm border border-(--border-strong) transition-colors",
+                  o.status === "fixed" && "border-transparent bg-ok text-on-solid",
+                )}
+              >
+                {o.status === "fixed" && <Check className="size-3" />}
+              </button>
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className={cn("text-body", o.status === "fixed" ? "text-muted-foreground" : "text-foreground/90")}>
+                  {o.text}
+                </span>
+                <span className="text-subhead text-muted-foreground">{o.fix ? `→ ${o.fix}` : "No fix yet."}</span>
+              </span>
+              <IconAction label="Edit" command="rb obstacle update" icon={Pencil} onClick={() => ask(obstacleUpdate(node, o))} />
+              <IconAction label="Remove" command="rb obstacle remove" icon={X} onClick={() => ask(obstacleRemove(node, o))} />
             </li>
           ))}
         </Section>

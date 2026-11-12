@@ -29,6 +29,7 @@ import { existsSync, readFileSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { parseEnv } from "node:util"
+import { parse as parseYaml } from "yaml"
 import { camel, kebab } from "./flags.ts"
 import { selfUpdate } from "./selfUpdate.ts"
 import { summariseNode } from "./summary.ts"
@@ -45,6 +46,7 @@ import type {
   NodePage,
   NodeSummary,
   NodeView,
+  ObstacleView,
   OpInfo,
   OpResponse,
   PlanBrief,
@@ -55,6 +57,8 @@ import type {
   ResourceTotal,
   ResourceTotals,
   ResourceView,
+  TreeNode,
+  TreeView,
   UnlockView,
   UserView,
 } from "./types.ts"
@@ -227,19 +231,26 @@ function renderCheck(check: CheckView): string {
   return [head, table(check.issues.map((i) => [`  ${i.severity}`, i.code, i.message]))].join("\n")
 }
 
+const levelText = (level: number | null) => (level === null ? "milestone" : num(level))
+const gapOf = (gap: Gap | null) => (gap === null ? "-" : gapText(gap))
+
 function renderNodes(nodes: NodeSummary[]): string {
   if (nodes.length === 0) return "No node."
   return table([
-    ["REF", "LEVEL", "GAP", "FROM", "STATUS", "SIZE", "CRIT", "REQ", "TITLE"],
+    ["REF", "LEVEL", "GAP", "FROM", "STATUS", "READY", "SIZE", "FINISH", "DUE", "CRIT", "REQ", "OBST", "TITLE"],
     ...nodes.map((n) => [
       n.ref,
-      num(n.level),
-      gapText(n.gap),
-      n.gap.from,
+      levelText(n.level),
+      gapOf(n.gap),
+      n.gap?.from ?? "-",
       n.status,
+      n.ready ? "yes" : "",
       String(n.size),
+      n.schedule.finish ?? "-",
+      n.due ?? "",
       `${n.criteria.met}/${n.criteria.total}`,
       `${n.requirements.met}/${n.requirements.total}`,
+      `${n.obstacles.open}/${n.obstacles.total}`,
       clip(n.title, 60),
     ]),
   ])
@@ -260,14 +271,34 @@ const clip = (s: string, max: number) => {
   return line.length > max ? `${line.slice(0, max - 1)}…` : line
 }
 
+/** `node tree`: one line per node, indented by how far back it is. */
+function renderTree(t: TreeView): string {
+  const lines: string[] = []
+  const walk = (n: TreeNode, prefix: string, last: boolean, top: boolean) => {
+    const branch = top ? "" : last ? "└─ " : "├─ "
+    const facts = [n.status, n.level === null ? "milestone" : num(n.level), n.ready ? "ready" : "", n.schedule.finish ? `finish ${n.schedule.finish}` : ""]
+      .filter(Boolean)
+      .join(", ")
+    lines.push(`${prefix}${branch}${n.ref}  ${clip(n.title, 60)}  (${facts})${n.cut ? `  +${n.dependsOn.length - n.requires.length} more` : ""}`)
+    const next = top ? "" : prefix + (last ? "   " : "│  ")
+    n.requires.forEach((c, i) => walk(c, next, i === n.requires.length - 1, false))
+  }
+  walk(t.root, "", true, true)
+  lines.push("", `${t.shown} node${t.shown === 1 ? "" : "s"}, depth ${t.depth}. Deeper: rb node tree --ref ${t.root.ref} --depth ${t.depth + 1}`)
+  return lines.join("\n")
+}
+
 /** Messages shown under a node; the rest are a `message list` away. */
 const NODE_MESSAGES = 5
 
 function renderNode(n: NodeView): string {
   const list = (title: string, lines: string[]) => [``, title, ...(lines.length ? lines.map((l) => `  ${l}`) : ["  (none)"])]
   return [
-    `${n.ref}  ${n.title}  [${n.status}]`,
-    `level ${num(n.level)}, ${gapText(n.gap)} from ${n.gap.from} (${num(n.gap.base)}), size ${n.size}/100`,
+    `${n.ref}  ${n.title}  [${n.status}]${n.ready ? "  ready" : ""}`,
+    n.gap === null
+      ? `milestone (moves no metric), size ${n.size}/100`
+      : `level ${num(n.level!)}, ${gapText(n.gap)} from ${n.gap.from} (${num(n.gap.base)}), size ${n.size}/100`,
+    `duration ${n.duration === null ? "unknown" : `${num(n.duration)} d`}, start ${n.schedule.start ?? "unknown"}, finish ${n.schedule.finish ?? "unknown"}${n.due ? `, due ${n.due}` : ""}`,
     ...(n.description ? ["", n.description] : []),
     ...list("Success criteria", n.criteria.map((c) => `${box(c.met)} ${c.slug}: ${c.text}`)),
     ...list(
@@ -276,7 +307,14 @@ function renderNode(n: NodeView): string {
     ),
     ...list("Requires (providers of its requirements)", n.dependsOn.length ? [n.dependsOn.join(", ")] : []),
     ...list("Enables", n.enables.length ? [n.enables.join(", ")] : []),
-    ...list("Resources", n.resources.map((r) => `${r.slug}: ${r.kind}, ${r.name}, ${num(r.quantity)} ${r.unit}`)),
+    ...list(
+      "Resources",
+      n.resources.map((r) => `${r.slug}: ${r.provides ? "brings " : ""}${r.kind}, ${r.name}, ${num(r.quantity)} ${r.unit}`),
+    ),
+    ...list(
+      "Obstacles",
+      n.obstacles.map((o) => `${o.status === "fixed" ? "[x]" : "[ ]"} ${o.slug}: ${o.text}${o.fix ? `  -> ${o.fix}` : ""}`),
+    ),
     ...list(
       n.messages.length > NODE_MESSAGES
         ? `Messages (last ${NODE_MESSAGES} of ${n.messages.length}; all: rb message list --plan ${n.plan} --node ${n.ref} --last ${n.messages.length})`
@@ -455,6 +493,20 @@ function render(name: string, result: unknown): string {
     if (u.nodes.length === 0) return `Nothing to unlock: ${u.target} is done.`
     return [`To reach ${u.target}, tackle now:`, renderNodes(u.nodes), "", `Size left: ${u.size} (heaviest path, perfect parallelism)`].join("\n")
   }
+  if (name === "node.tree") return renderTree(result as TreeView)
+  if (name === "batch.apply") {
+    const b = result as { plan: string | null; applied: number; created: Record<string, string> }
+    const created = Object.entries(b.created).map(([k, v]) => `  ${k} = ${v}`)
+    return [`Applied ${b.applied} step${b.applied === 1 ? "" : "s"}${b.plan ? ` to "${b.plan}"` : ""}.`, ...(created.length ? ["Created:", ...created] : [])].join("\n")
+  }
+  if (name === "obstacle.list") {
+    const list = result as ItemList<ObstacleView>
+    if (list.items.length === 0) return `${list.node} has none.`
+    return table([
+      ["STATUS", "SLUG", "TEXT", "FIX"],
+      ...list.items.map((o) => [o.status, o.slug, clip(o.text, 60), clip(o.fix, 60)]),
+    ])
+  }
   if (Array.isArray(result)) {
     const first = result[0] as Record<string, unknown> | undefined
     if (!first) {
@@ -558,6 +610,33 @@ async function runCli(
   const help = argv.includes("--help") || argv.includes("-h")
   const args = argv.filter((a) => a !== "--json" && a !== "--help" && a !== "-h")
   const infos = await backend.infos()
+  // `rb apply <file>`: the steps of a batch.apply, from a YAML or JSON file (- for stdin).
+  if (args[0] === "apply") {
+    const file = args[1]
+    if (file === undefined || file.startsWith("--")) return fail("invalid", "Usage: rb apply <file.yaml> [--plan <slug>]  (- reads stdin)")
+    let parsed: unknown
+    try {
+      parsed = parseYaml(file === "-" ? readFileSync(0, "utf8") : readFileSync(file, "utf8"))
+    } catch (error) {
+      return fail("invalid", `Cannot read ${file}: ${(error as Error).message}`)
+    }
+    const doc = (Array.isArray(parsed) ? { steps: parsed } : parsed) as Record<string, unknown> | null
+    if (!doc || typeof doc !== "object" || !Array.isArray(doc["steps"])) {
+      return fail("invalid", `${file} must hold a list of steps, or {plan, steps: [...]}. Each step: {op: node.create, as: name, ...flags}.`)
+    }
+    let planArg: string | undefined
+    try {
+      planArg = takeOption(args.slice(2), "plan", "my-plan").value
+    } catch (error) {
+      if (error instanceof UsageError) return fail("invalid", error.message)
+      throw error
+    }
+    const plan = planArg ?? (typeof doc["plan"] === "string" ? doc["plan"] : undefined) ?? defaultPlan
+    const response = await backend.run("batch.apply", { ...(plan ? { plan } : {}), steps: doc["steps"] })
+    if (!response.ok) return fail(response.error.code, response.error.message)
+    console.log(json ? JSON.stringify(response, null, 2) : render("batch.apply", response.result))
+    return 0
+  }
   const words: string[] = []
   while (words.length < 2 && args[0] !== undefined && !args[0].startsWith("-")) words.push(args.shift()!)
   if (words.length === 0 || words[0] === "help") {

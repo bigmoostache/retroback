@@ -112,7 +112,19 @@ rb requirement update --node N1 --requirement second-line --provided-by N3
 rb node unlock --ref N1                            # what to tackle now to reach N1, and the size left
 rb plan check                                      # gaps, criteria, resources
 rb message add --node N2 --text 'Who owns this?'
+rb node create --title 'Seed closed' --enables N3 --milestone --duration 30 --due 2027-03-01
+rb obstacle add --node N4 --text 'Lead investor walks away.' --fix 'Two backups.'
+rb resource add --node N4 --kind capital --name seed --quantity 2000000 --unit EUR --provides
+rb plan update --start 2027-01-01 --cash 50000 --cash-unit EUR
+rb node list --ready                               # what can start today
+rb node tree --ref N1 --depth 2                    # what N1 requires, as a tree
+rb apply plan.yaml                                 # many steps, all or nothing; later steps use $name
 ```
+
+A milestone moves no metric (no level, no gap check). `rb plan check` also
+fails on loops, nodes finishing after their due date, and spending beyond the
+cash at hand plus what earlier nodes bring in; it warns on open nodes with no
+obstacle. The web graph zooms with its −/+ buttons or Ctrl/⌘ + wheel.
 
 Nothing is addressed by its position: criteria, requirements and resources by
 a slug unique in their node (`--criterion`, `--requirement`, `--resource`),

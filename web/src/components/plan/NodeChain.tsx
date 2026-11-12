@@ -8,7 +8,7 @@ import { buttonVariants } from "@/components/ui/button-variants"
 import { IconAction } from "@/components/ui/IconAction"
 import { SelectionGlide } from "@/components/ui/selectionGlide"
 import { toCommand } from "@/lib/api"
-import { gapText, num } from "@/lib/format"
+import { gapText, levelText, num } from "@/lib/format"
 import { nodeCreate, type Ask } from "@/lib/requests"
 import { cn } from "@/lib/utils"
 
@@ -84,17 +84,27 @@ export function NodeChain({
               >
                 <code className="w-9 shrink-0 font-mono text-subhead text-muted-foreground">{node.ref}</code>
                 <span className="min-w-0 flex-1 truncate text-body font-medium text-foreground/90">{node.title}</span>
+                {node.ready && (
+                  <span data-ready className="shrink-0 rounded-sm bg-ok/15 px-1.5 text-caption font-medium text-ok">
+                    ready
+                  </span>
+                )}
                 <StatusBadge status={node.status} />
                 <span
                   className={cn(
                     "w-20 shrink-0 text-right font-mono text-subhead tabular-nums",
-                    node.gap.ok ? "text-ok" : "text-danger",
+                    node.gap === null ? "text-muted-foreground" : node.gap.ok ? "text-ok" : "text-danger",
                   )}
                 >
-                  {gapText(node.gap)}
+                  {node.gap === null ? "-" : gapText(node.gap)}
                 </span>
-                <span className="w-20 shrink-0 text-right font-mono text-subhead text-foreground tabular-nums">
-                  {num(node.level)}
+                <span
+                  className={cn(
+                    "w-20 shrink-0 text-right font-mono text-subhead tabular-nums",
+                    node.level === null ? "text-muted-foreground italic" : "text-foreground",
+                  )}
+                >
+                  {levelText(node.level)}
                 </span>
               </button>
               <IconAction
