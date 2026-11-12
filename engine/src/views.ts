@@ -190,7 +190,9 @@ export async function loadPlan(slug?: string): Promise<PlanView> {
       .resources.filter((r) => r.provides === provides && r.unit.trim().toLowerCase() === unit)
       .reduce((sum, r) => sum + r.quantity, 0)
   const unfunded = new Map<string, number>()
-  for (const n of nodes) {
+  // A plan tracks cash once it has some at the start or a node brings some in; before that, no check.
+  const tracksCash = plan.cash > 0 || nodes.some((n) => cashOf(n.ref, true) > 0)
+  for (const n of tracksCash ? nodes : []) {
     if (inLoop.has(n.ref)) continue
     const ancestors = ancestorsOf(prereqs, n.ref)
     let spent = cashOf(n.ref, false)
