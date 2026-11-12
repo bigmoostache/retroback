@@ -77,7 +77,7 @@ export function useEngine(): Engine {
     setOnline(list.ok)
     if (!list.ok) return
     const current = list.result.some((p) => p.slug === asked) ? asked : (list.result[0]?.slug ?? null)
-    const shown = current ? await call<PlanView>("plan.show", { plan: current }) : null
+    const shown = current ? await call<PlanView>("plan.show", { plan: current, full: true }) : null
     // Another plan was selected meanwhile: a newer refresh is on its way.
     if (wanted.current !== asked) return
     const view = shown?.ok ? shown.result : null

@@ -5,7 +5,8 @@
 import { z } from "zod"
 import { db } from "../db.ts"
 import { uniqueSlug } from "../slug.ts"
-import { loadNode, nodeOf } from "../views.ts"
+import type { ItemList, NodeView, ResourceTotals } from "../types.ts"
+import { loadNode, loadPlan, nodeOf } from "../views.ts"
 import { defineOp, OpError, planFlag } from "./define.ts"
 import { assertNoLoop } from "./node.ts"
 
@@ -56,11 +57,25 @@ function renamed(rows: Row[], row: Row, asked: string | undefined, what: string,
 
 const done = (found: Found) => loadNode(found.plan.slug, found.node.ref)
 
+/** The items of one node, as `criterion list` and the others answer. */
+async function listOf<T>(plan: string | undefined, ref: string, pick: (node: NodeView) => T[]): Promise<ItemList<T>> {
+  const found = await nodeOf(plan, ref)
+  const node = await loadNode(found.plan.slug, found.node.ref)
+  return { plan: node.plan, node: node.ref, items: pick(node) }
+}
+
 // ---------------------------------------------------------------- criteria
 
 const criterionRows = (nodeId: string) => db.criterion.findMany({ where: { nodeId }, ...byPosition })
 
 const criterionOps = [
+  defineOp({
+    name: "criterion.list",
+    summary: "List the success criteria of a node, with their slug and whether they are met.",
+    mutates: false,
+    input: z.strictObject({ plan: planFlag, node: nodeFlag }),
+    run: async ({ plan, node }) => listOf(plan, node, (n) => n.criteria),
+  }),
   defineOp({
     name: "criterion.add",
     summary: "Add a success criterion to a node. Make it precise: a number, a date or a threshold that can be checked.",
@@ -137,6 +152,13 @@ const providedByFlag = z.string().min(1).describe("Ref of the former node that p
 
 const requirementOps = [
   defineOp({
+    name: "requirement.list",
+    summary: "List the requirements of a node: slug, text, the node that provides each one, and whether it is met.",
+    mutates: false,
+    input: z.strictObject({ plan: planFlag, node: nodeFlag }),
+    run: async ({ plan, node }) => listOf(plan, node, (n) => n.requirements),
+  }),
+  defineOp({
     name: "requirement.add",
     summary:
       "Add a requirement to a node: what must be true before work on it can start. Exactly one former node provides it, and it is met once that node is done.",
@@ -211,6 +233,21 @@ const requirementOps = [
 const resourceRows = (nodeId: string) => db.resourceNeed.findMany({ where: { nodeId }, ...byPosition })
 
 const resourceOps = [
+  defineOp({
+    name: "resource.list",
+    summary: "List the resources of a node. Without --node: the resources summed over the whole plan, with the nodes that need them.",
+    mutates: false,
+    input: z.strictObject({
+      plan: planFlag,
+      node: nodeFlag.optional().describe("Node ref, e.g. N3. Omit it for the totals of the plan."),
+    }),
+    run: async ({ plan, node }) => {
+      if (node !== undefined) return listOf(plan, node, (n) => n.resources)
+      const view = await loadPlan(plan)
+      const result: ResourceTotals = { plan: view.slug, resources: view.resources }
+      return result
+    },
+  }),
   defineOp({
     name: "resource.add",
     summary: "Add a resource a node needs. Any kind: human, computing, capital, machine, or anything else.",
