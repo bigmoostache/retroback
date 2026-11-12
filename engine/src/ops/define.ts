@@ -71,4 +71,7 @@ export function defineOp<S extends AnyObject>(def: {
 }
 
 /** Shared by every operation that targets a plan. */
-export const planFlag = z.string().optional().describe("Plan slug. Optional when there is only one plan.")
+export const planFlag = z
+  .string()
+  .optional()
+  .describe("Plan slug. Default: RB_PLAN with rb, otherwise the only plan you can see.")

@@ -2,6 +2,7 @@
  * The HTTP API of the engine, built from the registry (ops/index.ts).
  *
  *   GET  /api/ops               every operation with its input (same as `rb op list`), no sign-in needed
+ *   GET  /entrypoint.md         how an agent installs and configures rb, no sign-in needed
  *   POST /api/<entity>.<verb>   run an operation as the signed-in user; the JSON body is its input
  *
  * Who is signed in, first match wins:
@@ -22,6 +23,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { closeSession, openSession, userByEmail, userOfKey, userOfSession } from "./access.ts"
 import { db } from "./db.ts"
 import { API_PORT, DEV, DEV_EMAIL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, PUBLIC_URL } from "./env.ts"
+import { entrypoint } from "./entrypoint.ts"
 import type { User } from "./ops/define.ts"
 import { runOp } from "./ops/index.ts"
 import type { OpResponse } from "./types.ts"
@@ -198,6 +200,10 @@ async function logout(req: IncomingMessage, res: ServerResponse) {
 async function handle(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? "/", `http://${HOST}`)
   const path = url.pathname
+  if (path === "/entrypoint.md" && (req.method === "GET" || req.method === "HEAD")) {
+    res.writeHead(200, { "content-type": "text/markdown; charset=utf-8", "cache-control": "no-cache" })
+    return res.end(req.method === "HEAD" ? undefined : entrypoint(PUBLIC_URL))
+  }
   if (path === "/auth/me" && req.method === "GET") return authMe(req, res)
   if (path === "/auth/google" && req.method === "GET") return googleStart(res)
   if (path === "/auth/google/callback" && req.method === "GET") return googleCallback(req, res, url)

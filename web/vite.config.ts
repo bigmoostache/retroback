@@ -5,7 +5,7 @@ import tailwindcss from "@tailwindcss/vite"
 
 // The web app talks to the engine API (engine/src/server.ts) through /api, and signs in through /auth.
 const engine = { target: "http://127.0.0.1:7979", changeOrigin: true }
-const api = { "/api": engine, "/auth": engine }
+const api = { "/api": engine, "/auth": engine, "/entrypoint.md": engine }
 
 // Bound to 127.0.0.1 like the API. With the default host, `localhost` resolved to
 // ::1 only and strictPort did not see another server holding the port on IPv4.
