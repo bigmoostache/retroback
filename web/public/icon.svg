@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Retroback: a target, reached backward. Full-bleed so it also works as a maskable icon. -->
+  <rect width="512" height="512" fill="#0a5fd0"/>
+  <g fill="none" stroke="#fdfdfc" stroke-width="28" stroke-linecap="round">
+    <circle cx="256" cy="256" r="128"/>
+    <circle cx="256" cy="256" r="56"/>
+  </g>
+  <circle cx="256" cy="256" r="16" fill="#fdfdfc"/>
+</svg>
