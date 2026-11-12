@@ -137,3 +137,25 @@ model Message {
   @@unique([nodeId, handle])
   @@index([nodeId, position])
 }
+
+/// One operation that changes data, as it was asked: who, when, through what,
+/// and how it ended. Append only: the database refuses any change or deletion.
+/// Replaying the ok events in order rebuilds the data.
+model Event {
+  seq    Int      @id @default(autoincrement())
+  at     DateTime @default(now())
+  /// Who asked for it.
+  actor  String
+  /// Where it came from: cli, api, seed or replay.
+  via    String
+  op     String
+  /// Slug of the plan it touched, when there is one.
+  plan   String?
+  /// The input it ran with, defaults filled in.
+  input  Json
+  ok     Boolean
+  /// Error code and message when it failed.
+  error  String?
+
+  @@index([plan, seq])
+}

@@ -13,6 +13,15 @@ export class OpError extends Error {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyObject = z.ZodObject<any, any>
 
+export type Input = Record<string, unknown>
+
+/** Who runs an operation, and through what. Kept in the event log. */
+export interface Ctx {
+  actor: string
+  /** cli, api, seed, replay... */
+  via: string
+}
+
 /**
  * One thing the engine can do. The CLI and the API are both generated from
  * the list of these, so neither can do something the other cannot.
@@ -23,8 +32,14 @@ export interface Op {
   summary: string
   mutates: boolean
   input: AnyObject
-  /** Validates the raw input, then runs. */
-  run: (raw: unknown) => Promise<unknown>
+  /**
+   * Validates the raw input and fills in its defaults, random ones included
+   * (a message id). The event log keeps this input, so replaying it gives
+   * the same result.
+   */
+  parse: (raw: unknown) => Input
+  /** Runs on an input returned by `parse`. */
+  exec: (input: Input, ctx: Ctx) => Promise<unknown>
 }
 
 export function defineOp<S extends AnyObject>(def: {
@@ -32,9 +47,19 @@ export function defineOp<S extends AnyObject>(def: {
   summary: string
   mutates: boolean
   input: S
-  run: (input: z.output<S>) => Promise<unknown>
+  /** Fills in what the schema cannot: random or derived values. */
+  prepare?: (input: z.output<S>) => z.output<S>
+  run: (input: z.output<S>, ctx: Ctx) => Promise<unknown>
 }): Op {
-  return { ...def, run: (raw) => def.run(def.input.parse(raw)) }
+  const prepare = def.prepare ?? ((input: z.output<S>) => input)
+  return {
+    name: def.name,
+    summary: def.summary,
+    mutates: def.mutates,
+    input: def.input,
+    parse: (raw) => prepare(def.input.parse(raw)) as Input,
+    exec: (input, ctx) => def.run(input as z.output<S>, ctx),
+  }
 }
 
 /** Shared by every operation that targets a plan. */

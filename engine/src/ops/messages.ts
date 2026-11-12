@@ -46,13 +46,15 @@ export const messageOps = [
         .optional()
         .describe("Id of the message, e.g. m-decision. A random one (m-7f3a2c) when omitted."),
     }),
+    // Drawn before running, so the event log keeps it and a replay gives the same id.
+    prepare: (input) => ({ ...input, id: input.id ?? messageHandle() }),
     run: async ({ plan, node, text, author, id }) => {
       const found = await nodeOf(plan, node)
       const rows = await rowsOf(found.node.id)
-      const taken = new Set(rows.map((r) => r.handle))
-      if (id !== undefined && taken.has(id)) throw new OpError(`${found.node.ref} already has a message "${id}".`, "conflict")
-      let handle = id ?? messageHandle()
-      while (taken.has(handle)) handle = messageHandle()
+      const handle = id ?? messageHandle()
+      if (rows.some((r) => r.handle === handle)) {
+        throw new OpError(`${found.node.ref} already has a message "${handle}".`, "conflict")
+      }
       const position = Math.max(0, ...rows.map((r) => r.position)) + 1
       await db.message.create({ data: { nodeId: found.node.id, handle, position, author, text } })
       return loadNode(found.plan.slug, found.node.ref)
