@@ -7,11 +7,14 @@ import path from "node:path"
 
 const root = path.resolve(import.meta.dirname, "..")
 
-// `npm install -g <git repo>` passes global=true down to the install that
-// prepares the clone, so the build tools land elsewhere. Install them here then.
+// `npm install -g <git repo>` passes its own config (global, prefix...) down to
+// the install that prepares the clone, so the build tools land elsewhere and
+// the clone gets linked into the global prefix. Install them here, with a clean config.
 if (!existsSync(path.join(root, "node_modules", "esbuild", "package.json"))) {
-  const env = { ...process.env, npm_config_global: "false" }
-  execFileSync("npm", ["install", "--global=false", "--include=dev", "--no-save", "--ignore-scripts", "--no-audit", "--no-fund"], {
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !/^npm_config_/i.test(key) || /^npm_config_cache$/i.test(key)),
+  )
+  execFileSync("npm", ["install", "--include=dev", "--no-save", "--ignore-scripts", "--no-audit", "--no-fund"], {
     cwd: root,
     stdio: "inherit",
     env,
