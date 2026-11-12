@@ -121,6 +121,15 @@ const STEPS: Step[] = [
   ["plan.update", { ...plan, start: "2099-01-01", cash: 100, cashUnit: "EUR" }],
   ["plan.update", { ...plan, start: "2099-01-01", noStart: true }, "invalid"],
   ["plan.update", { ...plan, noStart: true }],
+  // Read-only SQL over this plan's rows only.
+  ["sql.query", { ...plan, query: "SELECT ref, title, milestone, ready FROM nodes ORDER BY seq" }],
+  ["sql.query", { ...plan, query: "SELECT n.ref, count(o.slug) AS obstacles FROM nodes n LEFT JOIN obstacles o ON o.node = n.ref GROUP BY n.ref;" }],
+  ["sql.query", { ...plan, query: "WITH r AS (SELECT * FROM requirements) SELECT node, provided_by FROM r" }],
+  ["sql.query", { ...plan, query: "DELETE FROM nodes" }, "invalid"],
+  ["sql.query", { ...plan, query: "SELECT 1; DROP TABLE nodes" }, "invalid"],
+  ["sql.query", { ...plan, query: "SELECT * FROM plan" }, "invalid"],
+  ["sql.query", { ...plan, query: "SELECT * FROM sqlite_master WHERE type = 'table' ORDER BY name" }],
+  ["sql.query", { plan: PLAN, query: "SELECT 1" }, "not_found", "stranger"],
   // Sharing: the owner gives access, the contributor works, may not delete or share, then leaves.
   ["plan.share", { ...plan, email: STRANGER }],
   ["plan.share", { ...plan, email: STRANGER }, "conflict"],

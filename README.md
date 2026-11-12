@@ -119,6 +119,7 @@ rb plan update --start 2027-01-01 --cash 50000 --cash-unit EUR
 rb node list --ready                               # what can start today
 rb node tree --ref N1 --depth 2                    # what N1 requires, as a tree
 rb apply plan.yaml                                 # many steps, all or nothing; later steps use $name
+rb sql "SELECT ref, title FROM nodes WHERE ready = 1"  # read-only SQL on one plan, CSV out
 ```
 
 A milestone moves no metric (no level, no gap check). `rb plan check` also

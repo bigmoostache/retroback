@@ -57,6 +57,7 @@ import type {
   ResourceTotal,
   ResourceTotals,
   ResourceView,
+  SqlView,
   TreeNode,
   TreeView,
   UnlockView,
@@ -288,6 +289,18 @@ function renderTree(t: TreeView): string {
   return lines.join("\n")
 }
 
+/** RFC 4180 CSV; a cut result ends with a comment line saying so. */
+function renderCsv(r: SqlView): string {
+  const cell = (v: string | number | null) => {
+    if (v === null) return ""
+    const s = String(v)
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  const lines = [r.columns.map(cell).join(","), ...r.rows.map((row) => row.map(cell).join(","))]
+  if (r.cut) lines.push(`# cut at ${r.rows.length} rows: add a LIMIT/OFFSET or a WHERE`)
+  return lines.join("\n")
+}
+
 /** Messages shown under a node; the rest are a `message list` away. */
 const NODE_MESSAGES = 5
 
@@ -494,6 +507,7 @@ function render(name: string, result: unknown): string {
     return [`To reach ${u.target}, tackle now:`, renderNodes(u.nodes), "", `Size left: ${u.size} (heaviest path, perfect parallelism)`].join("\n")
   }
   if (name === "node.tree") return renderTree(result as TreeView)
+  if (name === "sql.query") return renderCsv(result as SqlView)
   if (name === "batch.apply") {
     const b = result as { plan: string | null; applied: number; created: Record<string, string> }
     const created = Object.entries(b.created).map(([k, v]) => `  ${k} = ${v}`)
@@ -636,6 +650,10 @@ async function runCli(
     if (!response.ok) return fail(response.error.code, response.error.message)
     console.log(json ? JSON.stringify(response, null, 2) : render("batch.apply", response.result))
     return 0
+  }
+  // `rb sql "<query>"`: shorthand for rb sql query --query "<query>".
+  if (args[0] === "sql" && args[1] !== undefined && !args[1].startsWith("-") && args[1] !== "query") {
+    args.splice(0, 2, "sql", "query", "--query", args[1])
   }
   const words: string[] = []
   while (words.length < 2 && args[0] !== undefined && !args[0].startsWith("-")) words.push(args.shift()!)

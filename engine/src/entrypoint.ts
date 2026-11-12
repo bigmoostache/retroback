@@ -117,6 +117,9 @@ is the reference; \`rb <entity> <verb> --help\` shows one command.
   nodes (earliest finish after \`--due\`) and spending beyond the cash at hand
   (\`rb plan update --cash 50000 --cash-unit EUR --start 2027-01-01\`).
 - \`rb node tree --ref N1 --depth 2\` shows what a node requires, as a tree.
+- \`rb sql "SELECT ref, title FROM nodes WHERE ready = 1"\` runs a read-only query over
+  the current plan and prints CSV. SQLite dialect, a single SELECT, 1000 rows and 5 s at most.
+  Tables: nodes, requirements, criteria, resources, obstacles, messages, events (see \`rb sql query --help\`).
 - Every change is logged with who made it: \`rb event list\`.
 
 ## Without rb

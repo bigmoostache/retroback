@@ -39,7 +39,10 @@ await build({
   target: "node22",
   // Installed next to rb (see package.json); the Prisma runtime loads files of its own.
   external: ["@prisma/client", "@prisma/adapter-pg", "pg"],
-  banner: { js: "#!/usr/bin/env node" },
+  // Bundled CJS packages (yaml) call require(): give the ESM bundle one.
+  banner: {
+    js: ['#!/usr/bin/env node', 'import { createRequire as __rbCreateRequire } from "node:module";', "const require = __rbCreateRequire(import.meta.url);"].join("\n"),
+  },
   logLevel: "warning",
 })
 chmodSync(out, 0o755)
