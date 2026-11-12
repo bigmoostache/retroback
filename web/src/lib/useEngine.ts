@@ -12,9 +12,21 @@ export interface LastRun {
   message: string | null
 }
 
+export interface Auth {
+  /** Null when nobody is signed in. */
+  user: { email: string } | null
+  /** DEV=true: signed in as local@dev, no Google. */
+  dev: boolean
+  /** Google sign-in is set up. */
+  google: boolean
+}
+
 export interface Engine {
   /** Null until the first answer. */
   online: boolean | null
+  /** Null until /auth/me answers. */
+  auth: Auth | null
+  signOut: () => Promise<void>
   ops: OpInfo[]
   plans: PlanSummary[]
   /** Slug of the plan shown. */
@@ -29,6 +41,7 @@ export interface Engine {
 
 export function useEngine(): Engine {
   const [online, setOnline] = useState<boolean | null>(null)
+  const [auth, setAuth] = useState<Auth | null>(null)
   const [ops, setOps] = useState<OpInfo[]>([])
   const [plans, setPlans] = useState<PlanSummary[]>([])
   const [slug, setSlug] = useState<string | null>(() => localStorage.getItem(SLUG_KEY))
@@ -36,10 +49,23 @@ export function useEngine(): Engine {
   const [last, setLast] = useState<LastRun | null>(null)
   const wanted = useRef(slug)
   const seen = useRef("")
+  const seenAuth = useRef("")
   const hasOps = useRef(false)
 
   const refresh = useCallback(async () => {
     const asked = wanted.current
+    const me = await whoAmI()
+    if (me) {
+      const signature = JSON.stringify(me)
+      if (signature !== seenAuth.current) {
+        seenAuth.current = signature
+        setAuth(me)
+      }
+    }
+    if (me && !me.user) {
+      setOnline(true)
+      return
+    }
     if (!hasOps.current) {
       const listed = await call<OpInfo[]>("op.list")
       if (listed.ok) {
@@ -103,5 +129,24 @@ export function useEngine(): Engine {
     [want, refresh],
   )
 
-  return { online, ops, plans, slug, plan, selectPlan, run, last }
+  const signOut = useCallback(async () => {
+    await fetch("/auth/logout", { method: "POST" }).catch(() => undefined)
+    seen.current = ""
+    setPlans([])
+    setPlan(null)
+    await refresh()
+  }, [refresh])
+
+  return { online, auth, signOut, ops, plans, slug, plan, selectPlan, run, last }
+}
+
+/** Who the browser is signed in as. Null when the API does not answer. */
+async function whoAmI(): Promise<Auth | null> {
+  try {
+    const res = await fetch("/auth/me")
+    if (!res.ok) return null
+    return (await res.json()) as Auth
+  } catch {
+    return null
+  }
 }

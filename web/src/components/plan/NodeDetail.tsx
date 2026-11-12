@@ -172,6 +172,7 @@ export function NodeDetail({
   onSelect,
   unlockOf,
   onUnlock,
+  wide = false,
 }: {
   node: NodeView
   plan: PlanView
@@ -180,6 +181,8 @@ export function NodeDetail({
   onSelect: (ref: string) => void
   unlockOf: string | null
   onUnlock: (ref: string | null) => void
+  /** Takes the whole width (under the graph) instead of a side column. */
+  wide?: boolean | undefined
 }) {
   const titleOf = (ref: string) => plan.nodes.find((n) => n.ref === ref)?.title ?? ""
   const prereqs = new Map(plan.nodes.map((n) => [n.ref, n.dependsOn]))
@@ -197,7 +200,12 @@ export function NodeDetail({
   )
 
   return (
-    <aside className="card-shadow flex w-96 shrink-0 flex-col overflow-hidden rounded-2xl bg-surface-2">
+    <aside
+      className={cn(
+        "card-shadow flex shrink-0 flex-col overflow-hidden rounded-2xl bg-surface-2",
+        wide ? "min-w-0 flex-1" : "w-96",
+      )}
+    >
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">
         <header className="flex flex-col gap-2">
           <div className="flex items-start gap-2">
