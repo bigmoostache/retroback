@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { Check, LockOpen, Pencil, Plus, Trash2, X } from "lucide-react"
+import { Check, LockOpen, PanelLeftClose, Pencil, Plus, Trash2, X } from "lucide-react"
 import { unlock, unlockSize } from "@engine/graph.ts"
 import type { CheckItem, NodeStatus, NodeView, PlanGraph } from "@engine/types.ts"
 import { CommandHint } from "@/components/ops/CommandLine"
@@ -175,7 +175,7 @@ export function NodeDetail({
   onSelect,
   unlockOf,
   onUnlock,
-  wide = false,
+  onClose,
 }: {
   node: NodeView
   plan: PlanGraph
@@ -184,8 +184,8 @@ export function NodeDetail({
   onSelect: (ref: string) => void
   unlockOf: string | null
   onUnlock: (ref: string | null) => void
-  /** Takes the whole width (under the graph) instead of a side column. */
-  wide?: boolean | undefined
+  /** Closes the drawer; selecting a node opens it again. */
+  onClose: () => void
 }) {
   const titles = new Map(plan.nodes.map((n) => [n.ref, n.title]))
   const titleOf = (ref: string) => titles.get(ref) ?? ""
@@ -206,10 +206,8 @@ export function NodeDetail({
 
   return (
     <aside
-      className={cn(
-        "card-shadow flex shrink-0 flex-col overflow-hidden rounded-2xl bg-surface-2",
-        wide ? "min-w-0 flex-1" : "w-96",
-      )}
+      data-node-drawer
+      className="card-shadow flex w-96 shrink-0 flex-col overflow-hidden rounded-2xl bg-surface-2"
     >
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">
         <header className="flex flex-col gap-2">
@@ -223,6 +221,16 @@ export function NodeDetail({
               icon={Trash2}
               onClick={() => ask(nodeDelete(node))}
             />
+            <button
+              type="button"
+              aria-label="Close the node"
+              title="Close"
+              data-drawer-close
+              onClick={onClose}
+              className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <PanelLeftClose className="size-4" />
+            </button>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex min-w-0 flex-col font-mono text-subhead tabular-nums">

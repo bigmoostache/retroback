@@ -291,7 +291,7 @@ export function NodeGraph({
     .sort((a, b) => Number(touches(a)) - Number(touches(b)))
 
   return (
-    <section className="card-shadow flex shrink-0 flex-col rounded-2xl bg-surface-2">
+    <section className="card-shadow flex min-h-0 min-w-0 flex-1 flex-col rounded-2xl bg-surface-2">
       <PanelHeader
         title="Nodes"
         note="from the present to the target"
@@ -363,7 +363,7 @@ export function NodeGraph({
         data-graph
         onWheel={onWheel}
         // Scrolls as before, without showing the scrollbars.
-        className="mx-2 mt-1 mb-2 max-h-[50vh] overflow-auto rounded-xl bg-background [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="mx-2 mt-1 mb-2 min-h-0 flex-1 overflow-auto rounded-xl bg-background [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         <div style={{ width: layout.width * zoom, height: layout.height * zoom }}>
         <div
