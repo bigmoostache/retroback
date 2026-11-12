@@ -4,6 +4,25 @@
 var kebab = (s) => s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 var camel = (s) => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
 
+// engine/src/summary.ts
+var tally = (items) => ({ total: items.length, met: items.filter((i) => i.met).length });
+var summariseNode = (n) => ({
+  plan: n.plan,
+  ref: n.ref,
+  seq: n.seq,
+  title: n.title,
+  level: n.level,
+  status: n.status,
+  size: n.size,
+  gap: n.gap,
+  dependsOn: n.dependsOn,
+  enables: n.enables,
+  criteria: tally(n.criteria),
+  requirements: tally(n.requirements),
+  resources: n.resources.length,
+  messages: n.messages.length
+});
+
 // engine/src/cli.ts
 var DEFAULT_API = "http://127.0.0.1:7979";
 var Unreachable = class extends Error {
@@ -105,12 +124,35 @@ function renderCheck(check) {
   return [head, table(check.issues.map((i) => [`  ${i.severity}`, i.code, i.message]))].join("\n");
 }
 function renderNodes(nodes) {
-  if (nodes.length === 0) return "No node yet. Create the target with: rb node create --title <text>";
+  if (nodes.length === 0) return "No node.";
   return table([
-    ["REF", "LEVEL", "GAP", "FROM", "STATUS", "SIZE", "TITLE"],
-    ...nodes.map((n) => [n.ref, num(n.level), gapText(n.gap), n.gap.from, n.status, String(n.size), n.title])
+    ["REF", "LEVEL", "GAP", "FROM", "STATUS", "SIZE", "CRIT", "REQ", "TITLE"],
+    ...nodes.map((n) => [
+      n.ref,
+      num(n.level),
+      gapText(n.gap),
+      n.gap.from,
+      n.status,
+      String(n.size),
+      `${n.criteria.met}/${n.criteria.total}`,
+      `${n.requirements.met}/${n.requirements.total}`,
+      clip(n.title, 60)
+    ])
   ]);
 }
+function renderPage(page, command) {
+  if (page.total === 0) return "No node. Create the target with: rb node create --title <text>";
+  const lines = [renderNodes(page.nodes)];
+  if (page.next) {
+    lines.push("", `${page.nodes.length} of ${page.total} shown. Next page: ${command} --after ${page.next}`);
+  }
+  return lines.join("\n");
+}
+var clip = (s, max) => {
+  const line = s.replace(/\s+/g, " ");
+  return line.length > max ? `${line.slice(0, max - 1)}\u2026` : line;
+};
+var NODE_MESSAGES = 5;
 function renderNode(n) {
   const list = (title, lines) => [``, title, ...lines.length ? lines.map((l) => `  ${l}`) : ["  (none)"]];
   return [
@@ -125,26 +167,66 @@ function renderNode(n) {
     ...list("Requires (providers of its requirements)", n.dependsOn.length ? [n.dependsOn.join(", ")] : []),
     ...list("Enables", n.enables.length ? [n.enables.join(", ")] : []),
     ...list("Resources", n.resources.map((r) => `${r.slug}: ${r.kind}, ${r.name}, ${num(r.quantity)} ${r.unit}`)),
-    ...list("Messages", n.messages.map(messageLine))
+    ...list(
+      n.messages.length > NODE_MESSAGES ? `Messages (last ${NODE_MESSAGES} of ${n.messages.length}; all: rb message list --plan ${n.plan} --node ${n.ref} --last ${n.messages.length})` : "Messages",
+      n.messages.slice(-NODE_MESSAGES).map(messageLine)
+    )
   ].join("\n");
 }
 var messageLine = (m) => `${m.id}  ${m.author}, ${m.at.slice(0, 16).replace("T", " ")}${m.edited ? " (edited)" : ""}: ${m.text.replace(/\n/g, "\n          ")}`;
-var renderMessages = (messages) => messages.length === 0 ? "No message." : messages.map(messageLine).join("\n");
+function renderMessages(page) {
+  if (page.total === 0) return "No message.";
+  const lines = page.messages.map(messageLine);
+  if (page.messages.length < page.total) {
+    lines.unshift(`Last ${page.messages.length} of ${page.total}. More: --last ${page.total}`, "");
+  }
+  return lines.join("\n");
+}
+var renderResourceTotals = (resources) => resources.length === 0 ? "No resource." : table([
+  ["KIND", "NAME", "QUANTITY", "NODES"],
+  ...resources.map((r) => [r.kind, r.name, `${num(r.quantity)} ${r.unit}`, r.nodes.join(", ")])
+]);
+var planHead = (p) => [
+  `${p.slug}  ${p.title}`,
+  `Target: ${p.target}`,
+  `${p.metric}: ${num(p.presentValue)} -> ${num(p.targetValue)} ${p.unit}, steps of ${num(p.gapPercent)}% at most`
+];
 function renderPlan(p) {
   return [
-    `${p.slug}  ${p.title}`,
-    `Target: ${p.target}`,
-    `${p.metric}: ${num(p.presentValue)} -> ${num(p.targetValue)} ${p.unit}, steps of ${num(p.gapPercent)}% at most`,
+    ...planHead(p),
     "",
-    renderNodes(p.nodes),
-    ...p.resources.length ? [
-      "",
-      "Resources",
-      table(p.resources.map((r) => [`  ${r.kind}`, r.name, `${num(r.quantity)} ${r.unit}`, r.nodes.join(", ")]))
-    ] : [],
+    renderNodes(p.nodes.map(summariseNode)),
+    ...p.resources.length ? ["", "Resources", renderResourceTotals(p.resources)] : [],
     "",
     renderCheck(p.check)
   ].join("\n");
+}
+function renderBrief(p) {
+  const { errors, warnings } = p.check;
+  return [
+    ...planHead(p),
+    "",
+    renderPage(p.nodes, `rb plan show --plan ${p.slug}`),
+    "",
+    `Check: ${p.check.ok ? "ok" : "failed"} (${errors} error${errors === 1 ? "" : "s"}, ${warnings} warning${warnings === 1 ? "" : "s"}). Details: rb plan check --plan ${p.slug}`,
+    `Resources: rb resource list --plan ${p.slug}`
+  ].join("\n");
+}
+function renderItems(name, list) {
+  if (list.items.length === 0) return `${list.node} has none.`;
+  if (name === "requirement.list") {
+    return table([
+      ["MET", "SLUG", "PROVIDED BY", "TEXT"],
+      ...list.items.map((r) => [box(r.met), r.slug, r.providedBy, clip(r.text, 80)])
+    ]);
+  }
+  if (name === "resource.list") {
+    return table([
+      ["SLUG", "KIND", "NAME", "QUANTITY"],
+      ...list.items.map((r) => [r.slug, r.kind, r.name, `${num(r.quantity)} ${r.unit}`])
+    ]);
+  }
+  return table([["MET", "SLUG", "TEXT"], ...list.items.map((c) => [box(c.met), c.slug, clip(c.text, 80)])]);
 }
 var renderPlans = (plans) => plans.length === 0 ? "No plan yet. Create one with: rb plan create" : table([
   ["SLUG", "NODES", "METRIC", "TITLE"],
@@ -180,6 +262,18 @@ function renderOpHelp(info) {
 }
 function render(name, result) {
   if (name === "message.list") return renderMessages(result);
+  if (name === "node.list") {
+    const page = result;
+    return renderPage(page, `rb node list --plan ${page.plan}`);
+  }
+  if (name === "criterion.list" || name === "requirement.list") return renderItems(name, result);
+  if (name === "resource.list") {
+    return "items" in result ? renderItems(name, result) : renderResourceTotals(result.resources);
+  }
+  if (name === "plan.show" || name === "plan.create" || name === "plan.update") {
+    const p = result;
+    return Array.isArray(p.nodes) ? renderPlan(p) : renderBrief(p);
+  }
   if (name === "user.me") {
     const me = result;
     return [`${me.email}${me.name ? `  (${me.name})` : ""}`, ...me.plans.map((p) => `  ${p.plan}  ${p.role}`)].join("\n");
@@ -219,7 +313,7 @@ function render(name, result) {
   if (name === "event.replay") {
     const r = result;
     const head = `Replayed ${r.replayed} events of "${r.from}" into "${r.as}", up to event ${r.upTo}.`;
-    return r.plan ? [head, "", renderPlan(r.plan)].join("\n") : `${head}
+    return r.plan ? [head, "", renderBrief(r.plan)].join("\n") : `${head}
 The history ends with the plan deleted.`;
   }
   if (name === "node.unlock") {
@@ -231,14 +325,11 @@ The history ends with the plan deleted.`;
     const first = result[0];
     if (!first) {
       if (name === "plan.list") return renderPlans([]);
-      if (name === "node.list") return renderNodes([]);
       return "(nothing)";
     }
     if ("cli" in first) return renderOps(result);
     if ("nodeCount" in first) return renderPlans(result);
-    if ("ref" in first) return renderNodes(result);
   } else if (result && typeof result === "object") {
-    if ("nodes" in result) return renderPlan(result);
     if ("ref" in result) return renderNode(result);
     if ("issues" in result) return renderCheck(result);
     if ("deleted" in result) return `Deleted ${String(result.deleted)}.`;

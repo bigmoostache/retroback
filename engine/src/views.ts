@@ -3,7 +3,8 @@ import { visiblePlans } from "./access.ts"
 import { db } from "./db.ts"
 import { OpError } from "./ops/define.ts"
 import { checkPlan, computeGap } from "./rules.ts"
-import type { NodeView, PlanSummary, PlanView, ResourceTotal } from "./types.ts"
+import { summariseNode } from "./summary.ts"
+import type { NodePage, NodeStatus, NodeView, PlanBrief, PlanSummary, PlanView, ResourceTotal } from "./types.ts"
 
 export const normRef = (ref: string) => ref.trim().toUpperCase()
 
@@ -127,4 +128,46 @@ export async function loadNode(planSlug: string, ref: string): Promise<NodeView>
   const node = plan.nodes.find((n) => n.ref === normRef(ref))
   if (!node) throw new OpError(`No node ${normRef(ref)} in plan "${plan.slug}".`, "not_found")
   return node
+}
+
+export { summariseNode }
+
+/** The default and largest page of nodes. */
+export const PAGE = 50
+export const MAX_PAGE = 500
+
+export interface PageOptions {
+  status?: NodeStatus | undefined
+  /** Only the nodes after this ref, in ref order. */
+  after?: string | undefined
+  limit?: number | undefined
+}
+
+/** A page of the nodes of a plan, in ref order. Paged by ref, never by position. */
+export function pageNodes(plan: PlanView, { status, after, limit = PAGE }: PageOptions): NodePage {
+  const matching = plan.nodes.filter((n) => status === undefined || n.status === status)
+  let from = 0
+  if (after !== undefined) {
+    const cursor = plan.nodes.find((n) => n.ref === normRef(after))
+    if (!cursor) throw new OpError(`No node ${normRef(after)} in plan "${plan.slug}".`, "not_found")
+    from = matching.filter((n) => n.seq <= cursor.seq).length
+  }
+  const page = matching.slice(from, from + limit)
+  const more = from + page.length < matching.length
+  return {
+    plan: plan.slug,
+    total: matching.length,
+    nodes: page.map(summariseNode),
+    next: more ? page.at(-1)!.ref : null,
+  }
+}
+
+/** The plan in a bounded size: its fields, the check as counts, and the first page of nodes. */
+export function briefOf(plan: PlanView, options: PageOptions = {}): PlanBrief {
+  const errors = plan.check.issues.filter((i) => i.severity === "error").length
+  return {
+    ...summarise(plan, plan.nodes.length),
+    check: { ok: plan.check.ok, errors, warnings: plan.check.issues.length - errors },
+    nodes: pageNodes(plan, options),
+  }
 }

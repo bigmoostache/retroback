@@ -7,8 +7,8 @@ import { z } from "zod"
 import { currentUser } from "../access.ts"
 import { db } from "../db.ts"
 import { slugify } from "../slug.ts"
-import type { EventView, OpResponse, PlanView, ReplayView } from "../types.ts"
-import { loadPlan, planOf } from "../views.ts"
+import type { EventView, OpResponse, ReplayView } from "../types.ts"
+import { briefOf, loadPlan, planOf } from "../views.ts"
 import { defineOp, OpError, type Ctx, type Input } from "./define.ts"
 
 type Run = (name: string, input: Input, ctx: Ctx) => Promise<OpResponse<unknown>>
@@ -138,7 +138,7 @@ export const eventOps = (run: Run) => [
         as: target,
         replayed: events.length,
         upTo: last,
-        plan: exists ? ((await loadPlan(target)) satisfies PlanView) : null,
+        plan: exists ? briefOf(await loadPlan(target)) : null,
       }
       return result
     },

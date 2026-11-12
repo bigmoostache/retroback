@@ -2,8 +2,9 @@ import { z } from "zod"
 import { assertOwner, currentUser, visiblePlans } from "../access.ts"
 import { db } from "../db.ts"
 import { slugify } from "../slug.ts"
-import { loadPlan, planOf, summarise } from "../views.ts"
+import { briefOf, loadPlan, planOf, summarise } from "../views.ts"
 import { defineOp, OpError, planFlag } from "./define.ts"
+import { pageFlags } from "./node.ts"
 
 function assertScale(s: { presentValue: number; targetValue: number; gapPercent: number }) {
   if (s.presentValue === s.targetValue) {
@@ -30,10 +31,18 @@ export const planOps = [
 
   defineOp({
     name: "plan.show",
-    summary: "Show a plan: its nodes from the target back to the present, resource totals and check.",
+    summary:
+      "Show a plan: its fields, the check counts and a page of its nodes, one line each. --full gives every node in full, the resource totals and the check issues.",
     mutates: false,
-    input: z.strictObject({ plan: planFlag }),
-    run: ({ plan }) => loadPlan(plan),
+    input: z.strictObject({
+      plan: planFlag,
+      full: z.boolean().default(false).describe("Everything, every node in full. Can be large: meant for the web app and scripts."),
+      ...pageFlags,
+    }),
+    run: async ({ plan, full, ...page }) => {
+      const view = await loadPlan(plan)
+      return full ? view : briefOf(view, page)
+    },
   }),
 
   defineOp({
@@ -74,7 +83,7 @@ export const planOps = [
           ...(user ? { members: { create: { userId: user.id, role: "owner" as const } } } : {}),
         },
       })
-      return loadPlan(slug)
+      return briefOf(await loadPlan(slug))
     },
   }),
 
@@ -100,7 +109,7 @@ export const planOps = [
         gapPercent: data.gapPercent ?? current.gapPercent,
       })
       await db.plan.update({ where: { id: current.id }, data })
-      return loadPlan(current.slug)
+      return briefOf(await loadPlan(current.slug))
     },
   }),
 

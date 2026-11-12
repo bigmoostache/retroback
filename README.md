@@ -95,6 +95,25 @@ Nothing is addressed by its position: criteria, requirements and resources by
 a slug unique in their node (`--criterion`, `--requirement`, `--resource`),
 messages by their id (`--message m-7f3a2c`). `rb node show` lists them.
 
+## Output stays small
+
+Lists show one line per item and are cut to a page; a cut list ends with the
+command for the next page. Paging goes by ref, never by position.
+
+```sh
+rb node list --plan growth                          # 50 nodes at most, one line each
+rb node list --plan growth --after N50 --limit 20   # the next page
+rb node list --plan growth --status doing
+rb plan show --plan growth                          # the plan, check counts, first page of nodes
+rb plan show --plan growth --full --json            # everything (what the web app reads)
+rb criterion list   --node N4
+rb requirement list --node N4                       # with the node providing each one
+rb resource list    --node N4                       # without --node: totals over the plan
+rb message list     --node N4 --last 20             # the latest messages (default 20)
+```
+
+`rb node show` prints the last 5 messages of a node; `rb message list` gives the rest.
+
 ## Event log
 
 Every operation that changes data, from `rb`, the API or the web app, is

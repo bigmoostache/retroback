@@ -4,11 +4,18 @@ import { requires, unlock, unlockSize } from "../graph.ts"
 import { prerequisiteLevel } from "../rules.ts"
 import { uniqueSlug } from "../slug.ts"
 import type { UnlockView } from "../types.ts"
-import { loadNode, loadPlan, nodeOf, normRef, planOf } from "../views.ts"
+import { loadNode, loadPlan, MAX_PAGE, nodeOf, normRef, PAGE, pageNodes, planOf, summariseNode } from "../views.ts"
 import { defineOp, OpError, planFlag } from "./define.ts"
 
 const refFlag = z.string().describe("Node ref, e.g. N3.")
 const sizeFlag = z.number().int().min(0).max(100).describe("How big the node is, from 0 (tiny) to 100 (largest).")
+
+/** Filters and paging of node lists. Shared with plan.show. */
+export const pageFlags = {
+  status: z.enum(["todo", "doing", "done"]).optional().describe("Only the nodes with this status."),
+  after: z.string().optional().describe("Only the nodes after this ref: the next page, as given at the end of a cut list."),
+  limit: z.number().int().min(1).max(MAX_PAGE).default(PAGE).describe(`How many nodes at most (${MAX_PAGE} at most).`),
+}
 
 /** For each node id of a plan, the ids of the nodes that provide its requirements. */
 export async function prereqsOf(planId: string): Promise<Map<string, string[]>> {
@@ -36,10 +43,10 @@ export async function assertNoLoop(planId: string, later: { id: string; ref: str
 export const nodeOps = [
   defineOp({
     name: "node.list",
-    summary: "List the nodes of a plan, from the target back to the present.",
+    summary: `List the nodes of a plan, one line each, from the target back to the present. ${PAGE} at a time by default: page with --after <ref>.`,
     mutates: false,
-    input: z.strictObject({ plan: planFlag }),
-    run: async ({ plan }) => (await loadPlan(plan)).nodes,
+    input: z.strictObject({ plan: planFlag, ...pageFlags }),
+    run: async ({ plan, ...page }) => pageNodes(await loadPlan(plan), page),
   }),
 
   defineOp({
@@ -63,7 +70,7 @@ export const nodeOps = [
       const prereqs = new Map(view.nodes.map((n) => [n.ref, n.dependsOn]))
       const result: UnlockView = {
         target: target.ref,
-        nodes: unlock(view.nodes, prereqs, target.ref),
+        nodes: unlock(view.nodes, prereqs, target.ref).map(summariseNode),
         size: unlockSize(view.nodes, prereqs, target.ref),
       }
       return result

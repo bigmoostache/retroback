@@ -2,6 +2,7 @@
 import { z } from "zod"
 import { db } from "../db.ts"
 import { messageHandle } from "../slug.ts"
+import type { MessagePage } from "../types.ts"
 import { loadNode, nodeOf } from "../views.ts"
 import { defineOp, OpError, planFlag } from "./define.ts"
 
@@ -22,12 +23,18 @@ async function messageWith(plan: string | undefined, node: string, id: string) {
 export const messageOps = [
   defineOp({
     name: "message.list",
-    summary: "List the messages under a node, oldest first.",
+    summary: "List the latest messages under a node, oldest first: 20 by default.",
     mutates: false,
-    input: z.strictObject({ plan: planFlag, node: nodeFlag }),
-    run: async ({ plan, node }) => {
+    input: z.strictObject({
+      plan: planFlag,
+      node: nodeFlag,
+      last: z.number().int().min(1).max(500).default(20).describe("How many messages at most: the latest ones."),
+    }),
+    run: async ({ plan, node, last }) => {
       const found = await nodeOf(plan, node)
-      return (await loadNode(found.plan.slug, found.node.ref)).messages
+      const all = (await loadNode(found.plan.slug, found.node.ref)).messages
+      const result: MessagePage = { plan: found.plan.slug, node: found.node.ref, total: all.length, messages: all.slice(-last) }
+      return result
     },
   }),
 

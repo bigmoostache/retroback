@@ -18,19 +18,30 @@
  * Exit code: 0 on success, 1 on error, 3 when `plan check` finds an error.
  */
 import { camel, kebab } from "./flags.ts"
+import { summariseNode } from "./summary.ts"
 import type {
   ApiKeyView,
+  CheckItem,
   CheckView,
   EventView,
   Gap,
+  ItemList,
   MemberView,
+  MessagePage,
   MessageView,
+  NodePage,
+  NodeSummary,
   NodeView,
   OpInfo,
   OpResponse,
+  PlanBrief,
   PlanSummary,
   PlanView,
   ReplayView,
+  RequirementView,
+  ResourceTotal,
+  ResourceTotals,
+  ResourceView,
   UnlockView,
   UserView,
 } from "./types.ts"
@@ -158,13 +169,41 @@ function renderCheck(check: CheckView): string {
   return [head, table(check.issues.map((i) => [`  ${i.severity}`, i.code, i.message]))].join("\n")
 }
 
-function renderNodes(nodes: NodeView[]): string {
-  if (nodes.length === 0) return "No node yet. Create the target with: rb node create --title <text>"
+function renderNodes(nodes: NodeSummary[]): string {
+  if (nodes.length === 0) return "No node."
   return table([
-    ["REF", "LEVEL", "GAP", "FROM", "STATUS", "SIZE", "TITLE"],
-    ...nodes.map((n) => [n.ref, num(n.level), gapText(n.gap), n.gap.from, n.status, String(n.size), n.title]),
+    ["REF", "LEVEL", "GAP", "FROM", "STATUS", "SIZE", "CRIT", "REQ", "TITLE"],
+    ...nodes.map((n) => [
+      n.ref,
+      num(n.level),
+      gapText(n.gap),
+      n.gap.from,
+      n.status,
+      String(n.size),
+      `${n.criteria.met}/${n.criteria.total}`,
+      `${n.requirements.met}/${n.requirements.total}`,
+      clip(n.title, 60),
+    ]),
   ])
 }
+
+/** A page of nodes, and the command for the next one when it is cut. */
+function renderPage(page: NodePage, command: string): string {
+  if (page.total === 0) return "No node. Create the target with: rb node create --title <text>"
+  const lines = [renderNodes(page.nodes)]
+  if (page.next) {
+    lines.push("", `${page.nodes.length} of ${page.total} shown. Next page: ${command} --after ${page.next}`)
+  }
+  return lines.join("\n")
+}
+
+const clip = (s: string, max: number) => {
+  const line = s.replace(/\s+/g, " ")
+  return line.length > max ? `${line.slice(0, max - 1)}…` : line
+}
+
+/** Messages shown under a node; the rest are a `message list` away. */
+const NODE_MESSAGES = 5
 
 function renderNode(n: NodeView): string {
   const list = (title: string, lines: string[]) => [``, title, ...(lines.length ? lines.map((l) => `  ${l}`) : ["  (none)"])]
@@ -180,33 +219,80 @@ function renderNode(n: NodeView): string {
     ...list("Requires (providers of its requirements)", n.dependsOn.length ? [n.dependsOn.join(", ")] : []),
     ...list("Enables", n.enables.length ? [n.enables.join(", ")] : []),
     ...list("Resources", n.resources.map((r) => `${r.slug}: ${r.kind}, ${r.name}, ${num(r.quantity)} ${r.unit}`)),
-    ...list("Messages", n.messages.map(messageLine)),
+    ...list(
+      n.messages.length > NODE_MESSAGES
+        ? `Messages (last ${NODE_MESSAGES} of ${n.messages.length}; all: rb message list --plan ${n.plan} --node ${n.ref} --last ${n.messages.length})`
+        : "Messages",
+      n.messages.slice(-NODE_MESSAGES).map(messageLine),
+    ),
   ].join("\n")
 }
 
 const messageLine = (m: MessageView) =>
   `${m.id}  ${m.author}, ${m.at.slice(0, 16).replace("T", " ")}${m.edited ? " (edited)" : ""}: ${m.text.replace(/\n/g, "\n          ")}`
 
-const renderMessages = (messages: MessageView[]) =>
-  messages.length === 0 ? "No message." : messages.map(messageLine).join("\n")
+function renderMessages(page: MessagePage): string {
+  if (page.total === 0) return "No message."
+  const lines = page.messages.map(messageLine)
+  if (page.messages.length < page.total) {
+    lines.unshift(`Last ${page.messages.length} of ${page.total}. More: --last ${page.total}`, "")
+  }
+  return lines.join("\n")
+}
 
+const renderResourceTotals = (resources: ResourceTotal[]) =>
+  resources.length === 0
+    ? "No resource."
+    : table([
+        ["KIND", "NAME", "QUANTITY", "NODES"],
+        ...resources.map((r) => [r.kind, r.name, `${num(r.quantity)} ${r.unit}`, r.nodes.join(", ")]),
+      ])
+
+const planHead = (p: PlanSummary) => [
+  `${p.slug}  ${p.title}`,
+  `Target: ${p.target}`,
+  `${p.metric}: ${num(p.presentValue)} -> ${num(p.targetValue)} ${p.unit}, steps of ${num(p.gapPercent)}% at most`,
+]
+
+/** `plan show --full`: everything. */
 function renderPlan(p: PlanView): string {
   return [
-    `${p.slug}  ${p.title}`,
-    `Target: ${p.target}`,
-    `${p.metric}: ${num(p.presentValue)} -> ${num(p.targetValue)} ${p.unit}, steps of ${num(p.gapPercent)}% at most`,
+    ...planHead(p),
     "",
-    renderNodes(p.nodes),
-    ...(p.resources.length
-      ? [
-          "",
-          "Resources",
-          table(p.resources.map((r) => [`  ${r.kind}`, r.name, `${num(r.quantity)} ${r.unit}`, r.nodes.join(", ")])),
-        ]
-      : []),
+    renderNodes(p.nodes.map(summariseNode)),
+    ...(p.resources.length ? ["", "Resources", renderResourceTotals(p.resources)] : []),
     "",
     renderCheck(p.check),
   ].join("\n")
+}
+
+function renderBrief(p: PlanBrief): string {
+  const { errors, warnings } = p.check
+  return [
+    ...planHead(p),
+    "",
+    renderPage(p.nodes, `rb plan show --plan ${p.slug}`),
+    "",
+    `Check: ${p.check.ok ? "ok" : "failed"} (${errors} error${errors === 1 ? "" : "s"}, ${warnings} warning${warnings === 1 ? "" : "s"}). Details: rb plan check --plan ${p.slug}`,
+    `Resources: rb resource list --plan ${p.slug}`,
+  ].join("\n")
+}
+
+function renderItems(name: string, list: ItemList<unknown>): string {
+  if (list.items.length === 0) return `${list.node} has none.`
+  if (name === "requirement.list") {
+    return table([
+      ["MET", "SLUG", "PROVIDED BY", "TEXT"],
+      ...(list.items as RequirementView[]).map((r) => [box(r.met), r.slug, r.providedBy, clip(r.text, 80)]),
+    ])
+  }
+  if (name === "resource.list") {
+    return table([
+      ["SLUG", "KIND", "NAME", "QUANTITY"],
+      ...(list.items as ResourceView[]).map((r) => [r.slug, r.kind, r.name, `${num(r.quantity)} ${r.unit}`]),
+    ])
+  }
+  return table([["MET", "SLUG", "TEXT"], ...(list.items as CheckItem[]).map((c) => [box(c.met), c.slug, clip(c.text, 80)])])
 }
 
 const renderPlans = (plans: PlanSummary[]) =>
@@ -249,7 +335,21 @@ function renderOpHelp(info: OpInfo): string {
 
 /** Picks the rendering from the shape of the operation's result. */
 function render(name: string, result: unknown): string {
-  if (name === "message.list") return renderMessages(result as MessageView[])
+  if (name === "message.list") return renderMessages(result as MessagePage)
+  if (name === "node.list") {
+    const page = result as NodePage
+    return renderPage(page, `rb node list --plan ${page.plan}`)
+  }
+  if (name === "criterion.list" || name === "requirement.list") return renderItems(name, result as ItemList<unknown>)
+  if (name === "resource.list") {
+    return "items" in (result as object)
+      ? renderItems(name, result as ItemList<unknown>)
+      : renderResourceTotals((result as ResourceTotals).resources)
+  }
+  if (name === "plan.show" || name === "plan.create" || name === "plan.update") {
+    const p = result as PlanView | PlanBrief
+    return Array.isArray(p.nodes) ? renderPlan(p as PlanView) : renderBrief(p as PlanBrief)
+  }
   if (name === "user.me") {
     const me = result as UserView
     return [`${me.email}${me.name ? `  (${me.name})` : ""}`, ...me.plans.map((p) => `  ${p.plan}  ${p.role}`)].join("\n")
@@ -289,7 +389,7 @@ function render(name: string, result: unknown): string {
   if (name === "event.replay") {
     const r = result as ReplayView
     const head = `Replayed ${r.replayed} events of "${r.from}" into "${r.as}", up to event ${r.upTo}.`
-    return r.plan ? [head, "", renderPlan(r.plan)].join("\n") : `${head}\nThe history ends with the plan deleted.`
+    return r.plan ? [head, "", renderBrief(r.plan)].join("\n") : `${head}\nThe history ends with the plan deleted.`
   }
   if (name === "node.unlock") {
     const u = result as UnlockView
@@ -300,14 +400,11 @@ function render(name: string, result: unknown): string {
     const first = result[0] as Record<string, unknown> | undefined
     if (!first) {
       if (name === "plan.list") return renderPlans([])
-      if (name === "node.list") return renderNodes([])
       return "(nothing)"
     }
     if ("cli" in first) return renderOps(result as OpInfo[])
     if ("nodeCount" in first) return renderPlans(result as PlanSummary[])
-    if ("ref" in first) return renderNodes(result as NodeView[])
   } else if (result && typeof result === "object") {
-    if ("nodes" in result) return renderPlan(result as PlanView)
     if ("ref" in result) return renderNode(result as NodeView)
     if ("issues" in result) return renderCheck(result as CheckView)
     if ("deleted" in result) return `Deleted ${String(result.deleted)}.`

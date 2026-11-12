@@ -70,12 +70,73 @@ export interface NodeView {
   messages: MessageView[]
 }
 
+/** How many of a node's items there are, and how many are met. */
+export interface Tally {
+  total: number
+  met: number
+}
+
+/** One line of a node: what lists show. `rb node show` gives the whole node. */
+export interface NodeSummary {
+  plan: string
+  ref: string
+  seq: number
+  title: string
+  level: number
+  status: NodeStatus
+  size: number
+  gap: Gap
+  dependsOn: string[]
+  enables: string[]
+  criteria: Tally
+  requirements: Tally
+  resources: number
+  messages: number
+}
+
+/** A page of nodes, in ref order. */
+export interface NodePage {
+  plan: string
+  /** How many nodes match the filters, on every page. */
+  total: number
+  nodes: NodeSummary[]
+  /** Ref to pass to --after for the next page; null on the last page. */
+  next: string | null
+}
+
+/** What `plan show` answers without --full: the plan, its check counts and a first page of nodes. */
+export interface PlanBrief extends PlanSummary {
+  check: { ok: boolean; errors: number; warnings: number }
+  nodes: NodePage
+}
+
+/** What `resource list` answers without --node: the resources summed over the plan. */
+export interface ResourceTotals {
+  plan: string
+  resources: ResourceTotal[]
+}
+
+/** What `message list` answers: the latest messages, oldest first. */
+export interface MessagePage {
+  plan: string
+  node: string
+  total: number
+  messages: MessageView[]
+}
+
+/** What `criterion list`, `requirement list` and `resource list --node` answer. */
+export interface ItemList<T> {
+  plan: string
+  node: string
+  items: T[]
+}
+
 /** What `node unlock` answers. */
 export interface UnlockView {
   /** The node to reach. */
   target: string
   /** What to tackle now: open nodes whose requirements are all done. */
-  nodes: NodeView[]
+  nodes: NodeSummary[]
   /** Heaviest path of sizes through the open nodes up to `target`: what is left with perfect parallelism. */
   size: number
 }
@@ -171,7 +232,7 @@ export interface ReplayView {
   /** Last sequence number replayed. */
   upTo: number
   /** The rebuilt plan; null when the history ends with its deletion. */
-  plan: PlanView | null
+  plan: PlanBrief | null
 }
 
 export interface OpInfo {
