@@ -37,6 +37,10 @@ npm install -g github:bigmoostache/retroback
 rb help
 ```
 
+`rb` keeps itself up to date: once a day it checks the latest build of main
+(`rb.sha256` of the `latest` release), replaces itself when it differs, and
+runs the command again with the new file. `RB_NO_UPDATE=1` turns that off.
+
 `rb` always talks to an engine API, signed in with an API key. It reads three
 settings: from the environment, else from the nearest `.env` in the current
 folder or above, else from `~/.config/rb/.env`.

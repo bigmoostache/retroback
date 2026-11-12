@@ -17,6 +17,9 @@
  * nearest .env in the current folder or above, else from ~/.config/rb/.env.
  * `rb config` shows what was found, and where.
  *
+ * The built rb updates itself once a day to the latest build of main
+ * (selfUpdate.ts). RB_NO_UPDATE=1 turns that off.
+ *
  * rb never touches the database: every operation goes through the API, as the
  * user of the key, so access checks and the event log always apply.
  *
@@ -27,6 +30,7 @@ import os from "node:os"
 import path from "node:path"
 import { parseEnv } from "node:util"
 import { camel, kebab } from "./flags.ts"
+import { selfUpdate } from "./selfUpdate.ts"
 import { summariseNode } from "./summary.ts"
 import type {
   ApiKeyView,
@@ -492,6 +496,8 @@ const overview = (infos: OpInfo[]) =>
 
 async function main(): Promise<number> {
   const raw = process.argv.slice(2)
+  const updated = await selfUpdate(raw)
+  if (updated !== null) return updated
   const json = raw.includes("--json")
   const fail = (code: string, message: string) => {
     if (json) console.log(JSON.stringify({ ok: false, error: { code, message } }, null, 2))
