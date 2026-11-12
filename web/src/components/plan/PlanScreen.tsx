@@ -8,6 +8,7 @@ import { NodeDetail } from "@/components/plan/NodeDetail"
 import { NodeGraph } from "@/components/plan/NodeGraph"
 import { PlanRail } from "@/components/plan/PlanRail"
 import { buttonVariants } from "@/components/ui/button-variants"
+import { Drawer, DrawerContent } from "@/components/ui/drawer"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { IconAction } from "@/components/ui/IconAction"
 import { toCommand } from "@/lib/api"
@@ -45,8 +46,8 @@ export function PlanScreen({ engine, ask }: { engine: Engine; ask: Ask }) {
   )
   const selectedRef = (selected && plan?.nodes.some((n) => n.ref === selected) ? selected : plan?.nodes[0]?.ref) ?? null
   const node = useNode(plan?.slug ?? null, selectedRef, engine.version)
-  // The drawer: open until closed, opened again by selecting a node.
-  const [drawerOpen, setDrawerOpen] = useState(true)
+  // The drawer: closed at first so the graph has the whole screen, opened by selecting a node.
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const select = (ref: string) => {
     setSelected(ref)
     setDrawerOpen(true)
@@ -118,20 +119,32 @@ export function PlanScreen({ engine, ask }: { engine: Engine; ask: Ask }) {
               onClick={() => ask(planDelete(plan))}
             />
           </header>
-          {/* The node opens in a drawer on the left; the graph or the list takes the rest. */}
+          {/*
+            The graph or the list takes the whole width. A node opens in a drawer
+            sliding in from the right, over it. The page stays usable while it is
+            open: clicking another node swaps it; Esc, the close button or a swipe close it.
+          */}
+          <Drawer
+            open={drawerOpen && drawer !== null}
+            onOpenChange={setDrawerOpen}
+            modal={false}
+            disablePointerDismissal
+          >
+            <DrawerContent data-node-drawer>
+              {drawer && (
+                <NodeDetail
+                  node={drawer}
+                  plan={plan}
+                  run={run}
+                  ask={ask}
+                  onSelect={select}
+                  unlockOf={unlockOf}
+                  onUnlock={showUnlock}
+                />
+              )}
+            </DrawerContent>
+          </Drawer>
           <div className="flex min-h-0 flex-1 flex-row gap-4 overflow-hidden px-6 pb-4">
-            {drawer && drawerOpen && (
-              <NodeDetail
-                node={drawer}
-                plan={plan}
-                run={run}
-                ask={ask}
-                onSelect={select}
-                unlockOf={unlockOf}
-                onUnlock={showUnlock}
-                onClose={() => setDrawerOpen(false)}
-              />
-            )}
             {layout === "graph" && hasNodes ? (
               <NodeGraph
                 key={plan.slug}
