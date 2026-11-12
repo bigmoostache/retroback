@@ -87,3 +87,30 @@ jobs:
             --title "Latest build of main" \
             --notes "Built from ${GITHUB_SHA} on every merge to main." \
             --target "${GITHUB_SHA}" --prerelease
+
+  deploy:
+    name: deploy to vm-1
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # One deploy at a time, never cancelled half-way (a migration may be running).
+    concurrency:
+      group: deploy-vm-1
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: https://retroback.daharness.com
+    steps:
+      - name: Deploy this commit
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # The key is pinned to /opt/retroback/deploy.sh (deploy/vm-deploy.sh); it only receives the SHA.
+          ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes "debian@${DEPLOY_HOST}" "deploy ${GITHUB_SHA}"
+      - name: Check the public site
+        run: curl -sf https://retroback.daharness.com/api/ops > /dev/null
