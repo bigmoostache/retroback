@@ -4,9 +4,20 @@
 import { execFileSync } from "node:child_process"
 import { chmodSync, existsSync } from "node:fs"
 import path from "node:path"
-import { build } from "esbuild"
 
 const root = path.resolve(import.meta.dirname, "..")
+
+// `npm install -g <git repo>` passes global=true down to the install that
+// prepares the clone, so the build tools land elsewhere. Install them here then.
+if (!existsSync(path.join(root, "node_modules", "esbuild", "package.json"))) {
+  const env = { ...process.env, npm_config_global: "false" }
+  execFileSync("npm", ["install", "--global=false", "--include=dev", "--no-save", "--ignore-scripts", "--no-audit", "--no-fund"], {
+    cwd: root,
+    stdio: "inherit",
+    env,
+  })
+}
+const { build } = await import("esbuild")
 const engine = path.join(root, "engine")
 const bin = (name) => path.join(root, "node_modules", ".bin", name)
 
