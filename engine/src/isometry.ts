@@ -14,7 +14,7 @@ import path from "node:path"
 import { isDeepStrictEqual } from "node:util"
 import { hashSecret, newSecret, userByEmail } from "./access.ts"
 import { db } from "./db.ts"
-import { API_PORT } from "./env.ts"
+import { API_PORT, DEV } from "./env.ts"
 import { kebab, toCommand } from "./flags.ts"
 import { ENGINE, opInfos, runOp } from "./ops/index.ts"
 import type { CheckView, OpResponse, PlanSummary } from "./types.ts"
@@ -42,7 +42,8 @@ const n2 = { plan: PLAN, node: "N2" }
 
 const STEPS: Step[] = [
   ["op.list", {}],
-  ["plan.list", {}, "unauthorized", "nobody"],
+  // Without a key: refused, except with DEV=true, where it is local@dev.
+  ["plan.list", {}, DEV ? "ok" : "unauthorized", "nobody"],
   [
     "plan.create",
     { slug: PLAN, title: "Isometry check", target: "Reach 103.", metric: "score", unit: "points", presentValue: 100, targetValue: 103 },
