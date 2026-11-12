@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { Check, Link2, LockOpen, Pencil, Plus, Trash2, X } from "lucide-react"
+import { Check, LockOpen, Pencil, Plus, Trash2, X } from "lucide-react"
 import { unlock, unlockSize } from "@engine/graph.ts"
 import type { CheckItem, NodeStatus, NodeView, PlanView } from "@engine/types.ts"
 import { CommandHint } from "@/components/ops/CommandLine"
@@ -9,22 +9,20 @@ import { IconAction } from "@/components/ui/IconAction"
 import { toCommand } from "@/lib/api"
 import { gapText, num } from "@/lib/format"
 import {
-  itemAdd,
+  criterionAdd,
+  criterionUpdate,
   itemRemove,
-  itemUpdate,
   messageAdd,
   messageRemove,
   messageUpdate,
   nodeDelete,
   nodeUpdate,
   requirementAdd,
-  requirementLink,
-  requirementUnlink,
+  requirementUpdate,
   resourceAdd,
   resourceRemove,
   resourceUpdate,
   type Ask,
-  type ListEntity,
 } from "@/lib/requests"
 import type { Engine } from "@/lib/useEngine"
 import { cn } from "@/lib/utils"
@@ -108,19 +106,13 @@ function Section({
   )
 }
 
-/** Success criteria or requirements: tick one, reword it, remove it, add one. */
-function Checklist({
-  entity,
-  title,
-  empty,
+/** Success criteria: tick one, reword it, remove it, add one. */
+function Criteria({
   items,
   node,
   run,
   ask,
 }: {
-  entity: ListEntity
-  title: string
-  empty: string
   items: CheckItem[]
   node: NodeView
   run: Engine["run"]
@@ -128,20 +120,20 @@ function Checklist({
 }) {
   return (
     <Section
-      title={title}
+      title="Success criteria"
       count={items.length}
-      empty={empty}
-      add={{ label: `Add a ${entity}`, command: `rb ${entity} add`, run: () => ask(itemAdd(entity, node)) }}
+      empty="None. A node needs at least one, with a figure."
+      add={{ label: "Add a criterion", command: "rb criterion add", run: () => ask(criterionAdd(node)) }}
     >
       {items.map((item) => (
-        <li key={item.index} className="flex items-start gap-2 px-2 py-1">
+        <li key={item.slug} data-criterion={item.slug} className="flex items-start gap-2 px-2 py-1">
           <button
             type="button"
             role="checkbox"
             aria-checked={item.met}
-            aria-label={`${entity} ${item.index} met`}
+            aria-label={`criterion ${item.slug} met`}
             onClick={() =>
-              void run(`${entity}.update`, { plan: node.plan, node: node.ref, index: item.index, met: !item.met })
+              void run("criterion.update", { plan: node.plan, node: node.ref, criterion: item.slug, met: !item.met })
             }
             className={cn(
               "mt-1 flex size-4 shrink-0 items-center justify-center rounded-sm border border-(--border-strong) transition-colors",
@@ -155,15 +147,15 @@ function Checklist({
           </span>
           <IconAction
             label="Edit"
-            command={`rb ${entity} update`}
+            command="rb criterion update"
             icon={Pencil}
-            onClick={() => ask(itemUpdate(entity, node, item))}
+            onClick={() => ask(criterionUpdate(node, item))}
           />
           <IconAction
             label="Remove"
-            command={`rb ${entity} remove`}
+            command="rb criterion remove"
             icon={X}
-            onClick={() => ask(itemRemove(entity, node, item))}
+            onClick={() => ask(itemRemove("criterion", node, item))}
           />
         </li>
       ))}
@@ -237,89 +229,49 @@ export function NodeDetail({
           {node.description && <p className="text-body text-muted-foreground">{node.description}</p>}
         </header>
 
-        <Checklist
-          entity="criterion"
-          title="Success criteria"
-          empty="None. A node needs at least one, with a figure."
-          items={node.criteria}
-          node={node}
-          run={run}
-          ask={ask}
-        />
+        <Criteria items={node.criteria} node={node} run={run} ask={ask} />
 
         <Section
           title="Requirements"
           count={node.requirements.length}
-          empty="None: it can start now."
+          empty="None: it starts from the present."
           add={{ label: "Add a requirement", command: "rb requirement add", run: () => ask(requirementAdd(node)) }}
         >
-          {node.requirements.map((item) => {
-            const provided = item.providedBy.length > 0
-            return (
-              <li key={item.index} data-requirement={item.index} className="flex items-start gap-2 px-2 py-1">
-                <button
-                  type="button"
-                  role="checkbox"
-                  aria-checked={item.met}
-                  aria-label={`requirement ${item.index} met`}
-                  disabled={provided}
-                  title={provided ? "Met once every node that provides it is done" : undefined}
-                  onClick={() =>
-                    void run("requirement.update", { plan: node.plan, node: node.ref, index: item.index, met: !item.met })
-                  }
-                  className={cn(
-                    "mt-1 flex size-4 shrink-0 items-center justify-center rounded-sm border border-(--border-strong) transition-colors",
-                    item.met && "border-transparent bg-ok text-on-solid",
-                    provided && "cursor-default opacity-70",
-                  )}
-                >
-                  {item.met && <Check className="size-3" />}
-                </button>
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className={cn("text-body", item.met ? "text-muted-foreground" : "text-foreground/90")}>
-                    {item.text}
-                  </span>
-                  {provided && (
-                    <span className="flex flex-wrap items-center gap-x-2 text-subhead text-muted-foreground">
-                      provided by
-                      {item.providedBy.map((ref) => (
-                        <span key={ref} className="flex items-center">
-                          {link(ref)}
-                          <button
-                            type="button"
-                            aria-label={`${ref} no longer provides it`}
-                            title={`rb requirement unlink --by ${ref}`}
-                            onClick={() => ask(requirementUnlink(node, item, ref))}
-                            className="flex size-4 items-center justify-center rounded-sm text-muted-foreground/60 hover:bg-muted hover:text-foreground"
-                          >
-                            <X className="size-3" />
-                          </button>
-                        </span>
-                      ))}
-                    </span>
-                  )}
+          {node.requirements.map((item) => (
+            <li key={item.slug} data-requirement={item.slug} className="flex items-start gap-2 px-2 py-1">
+              <span
+                role="img"
+                aria-label={item.met ? "met" : "not met"}
+                title={`Met once ${item.providedBy} is done`}
+                className={cn(
+                  "mt-1 flex size-4 shrink-0 items-center justify-center rounded-sm border border-(--border-strong)",
+                  item.met && "border-transparent bg-ok text-on-solid",
+                )}
+              >
+                {item.met && <Check className="size-3" />}
+              </span>
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className={cn("text-body", item.met ? "text-muted-foreground" : "text-foreground/90")}>
+                  {item.text}
                 </span>
-                <IconAction
-                  label="Link a node that provides it"
-                  command="rb requirement link"
-                  icon={Link2}
-                  onClick={() => ask(requirementLink(node, item))}
-                />
-                <IconAction
-                  label="Edit"
-                  command="rb requirement update"
-                  icon={Pencil}
-                  onClick={() => ask(itemUpdate("requirement", node, item))}
-                />
-                <IconAction
-                  label="Remove"
-                  command="rb requirement remove"
-                  icon={X}
-                  onClick={() => ask(itemRemove("requirement", node, item))}
-                />
-              </li>
-            )
-          })}
+                <span className="flex items-center gap-x-2 text-subhead text-muted-foreground">
+                  provided by {link(item.providedBy)}
+                </span>
+              </span>
+              <IconAction
+                label="Edit, or change who provides it"
+                command="rb requirement update"
+                icon={Pencil}
+                onClick={() => ask(requirementUpdate(node, item))}
+              />
+              <IconAction
+                label="Remove"
+                command="rb requirement remove"
+                icon={X}
+                onClick={() => ask(itemRemove("requirement", node, item))}
+              />
+            </li>
+          ))}
         </Section>
 
         <Section
@@ -373,7 +325,7 @@ export function NodeDetail({
           add={{ label: "Add a resource", command: "rb resource add", run: () => ask(resourceAdd(node)) }}
         >
           {node.resources.map((resource) => (
-            <li key={resource.index} className="flex items-start gap-2 px-2 py-1">
+            <li key={resource.slug} data-resource={resource.slug} className="flex items-start gap-2 px-2 py-1">
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="text-body text-foreground/90">{resource.name}</span>
                 <span className="text-subhead text-muted-foreground">
@@ -406,7 +358,7 @@ export function NodeDetail({
           add={{ label: "Post a message", command: "rb message add", run: () => ask(messageAdd(node)) }}
         >
           {node.messages.map((message) => (
-            <li key={message.index} data-message={message.index} className="flex items-start gap-2 px-2 py-1">
+            <li key={message.id} data-message={message.id} className="flex items-start gap-2 px-2 py-1">
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="flex items-baseline gap-2 text-subhead">
                   <span className="truncate font-medium text-foreground">{message.author}</span>

@@ -2,6 +2,7 @@ import { z } from "zod"
 import { db } from "../db.ts"
 import { requires, unlock, unlockSize } from "../graph.ts"
 import { prerequisiteLevel } from "../rules.ts"
+import { uniqueSlug } from "../slug.ts"
 import type { UnlockView } from "../types.ts"
 import { loadNode, loadPlan, nodeOf, normRef, planOf } from "../views.ts"
 import { defineOp, OpError, planFlag } from "./define.ts"
@@ -11,15 +12,15 @@ const sizeFlag = z.number().int().min(0).max(100).describe("How big the node is,
 
 /** For each node id of a plan, the ids of the nodes that provide its requirements. */
 export async function prereqsOf(planId: string): Promise<Map<string, string[]>> {
-  const rows = await db.requirementProvider.findMany({
+  const rows = await db.requirement.findMany({
     where: { node: { planId } },
-    select: { nodeId: true, requirement: { select: { nodeId: true } } },
+    select: { nodeId: true, providerId: true },
   })
   const prereqs = new Map<string, string[]>()
   for (const row of rows) {
-    const list = prereqs.get(row.requirement.nodeId) ?? []
-    list.push(row.nodeId)
-    prereqs.set(row.requirement.nodeId, list)
+    const list = prereqs.get(row.nodeId) ?? []
+    list.push(row.providerId)
+    prereqs.set(row.nodeId, list)
   }
   return prereqs
 }
@@ -83,21 +84,16 @@ export const nodeOps = [
         .default([])
         .describe("Later node this one provides a requirement of. Repeatable. The requirement is worded as the title."),
       forRequirement: z
-        .number()
-        .int()
+        .string()
         .min(1)
         .optional()
-        .describe("With a single --enables: provide that existing requirement of it instead of adding one."),
+        .describe("With a single --enables: slug of an existing requirement of it that the new node provides instead, in place of its current provider."),
       level: z
         .number()
         .optional()
         .describe("Metric value reached once done. Default: one full step before the enabled node, or the target value for the first node."),
       size: sizeFlag.default(50),
       criterion: z.array(z.string().min(1)).default([]).describe("Success criterion, precise and checkable. Repeatable."),
-      requirement: z
-        .array(z.string().min(1))
-        .default([])
-        .describe("Requirement to start the node that no node provides yet. Repeatable."),
     }),
     run: async (input) => {
       const plan = await planOf(input.plan)
@@ -113,11 +109,9 @@ export const nodeOps = [
       if (input.forRequirement !== undefined) {
         if (enables.length !== 1) throw new OpError("--for-requirement needs exactly one --enables.")
         const later = enables[0]!
-        const rows = await db.requirement.findMany({ where: { nodeId: later.id }, orderBy: { position: "asc" } })
-        const row = rows[input.forRequirement - 1]
-        if (!row) {
-          throw new OpError(`${later.ref} has no requirement ${input.forRequirement} (it has ${rows.length}).`, "not_found")
-        }
+        const slug = input.forRequirement.trim().toLowerCase()
+        const row = await db.requirement.findUnique({ where: { nodeId_slug: { nodeId: later.id, slug } } })
+        if (!row) throw new OpError(`${later.ref} has no requirement "${slug}".`, "not_found")
         existingRequirement = row.id
       }
 
@@ -132,7 +126,10 @@ export const nodeOps = [
 
       const seq = Math.max(0, ...existing.map((n) => n.seq)) + 1
       const ref = `N${seq}`
-      const asItems = (texts: string[]) => texts.map((text, i) => ({ text, position: i + 1 }))
+      const criteria: { text: string; position: number; slug: string }[] = []
+      for (const [i, text] of input.criterion.entries()) {
+        criteria.push({ text, position: i + 1, slug: uniqueSlug(text, criteria.map((c) => c.slug)) })
+      }
       // A new node requires nothing yet, so linking it cannot close a loop.
       await db.$transaction(async (tx) => {
         const node = await tx.node.create({
@@ -144,22 +141,22 @@ export const nodeOps = [
             description: input.description,
             level,
             size: input.size,
-            criteria: { create: asItems(input.criterion) },
-            requirements: { create: asItems(input.requirement) },
+            criteria: { create: criteria },
           },
         })
         if (existingRequirement) {
-          await tx.requirementProvider.create({ data: { requirementId: existingRequirement, nodeId: node.id } })
+          await tx.requirement.update({ where: { id: existingRequirement }, data: { providerId: node.id } })
           return
         }
         for (const later of enables) {
-          const last = await tx.requirement.aggregate({ where: { nodeId: later.id }, _max: { position: true } })
+          const rows = await tx.requirement.findMany({ where: { nodeId: later.id }, select: { slug: true, position: true } })
           await tx.requirement.create({
             data: {
               nodeId: later.id,
-              position: (last._max.position ?? 0) + 1,
+              position: Math.max(0, ...rows.map((r) => r.position)) + 1,
+              slug: uniqueSlug(input.title, rows.map((r) => r.slug)),
               text: input.title,
-              providers: { create: { nodeId: node.id } },
+              providerId: node.id,
             },
           })
         }
@@ -190,7 +187,7 @@ export const nodeOps = [
 
   defineOp({
     name: "node.delete",
-    summary: "Delete a node, with its criteria, requirements, resources, messages and the links where it provides a requirement.",
+    summary: "Delete a node, with its criteria, requirements, resources, messages, and the requirements of later nodes it provides.",
     mutates: true,
     input: z.strictObject({ plan: planFlag, ref: refFlag }),
     run: async ({ plan, ref }) => {

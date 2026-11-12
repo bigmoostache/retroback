@@ -1,6 +1,7 @@
 /**
  * The actions of the plan screen. Each one is an operation of the engine with
  * what the screen already knows filled in; the dialog shows its `rb` command.
+ * Items are addressed by slug, messages by id: never by position.
  */
 import type { CheckItem, MessageView, NodeView, PlanSummary, RequirementView, ResourceView } from "@engine/types.ts"
 import type { Input } from "@/lib/api"
@@ -10,7 +11,7 @@ export interface OpRequest {
   op: string
   title: string
   description?: string | undefined
-  /** Context of the action (plan, node, index): always sent, not shown as fields. */
+  /** Context of the action (plan, node, slug): always sent, not shown as fields. */
   fixed?: Input | undefined
   /** Values the fields start with. */
   initial?: Input | undefined
@@ -101,35 +102,53 @@ export const nodeUpdate = (node: NodeView): OpRequest => ({
 export const nodeDelete = (node: NodeView): OpRequest => ({
   op: "node.delete",
   title: `Delete ${node.ref}?`,
-  description: `"${node.title}" is deleted with its criteria, requirements, resources, messages and the links where it provides a requirement.`,
+  description: `"${node.title}" is deleted with its criteria, requirements, resources, messages, and the requirements of later nodes it provides.`,
   fixed: { plan: node.plan, ref: node.ref },
   destructive: true,
   submitLabel: "Delete",
 })
 
-export const itemAdd = (entity: ListEntity, node: NodeView): OpRequest => ({
-  op: `${entity}.add`,
-  title: `Add a ${WHAT[entity]} to ${node.ref}`,
+export const criterionAdd = (node: NodeView): OpRequest => ({
+  op: "criterion.add",
+  title: `Add a success criterion to ${node.ref}`,
   fixed: at(node),
   submitLabel: "Add",
 })
 
-export const itemUpdate = (entity: ListEntity, node: NodeView, item: CheckItem): OpRequest => ({
-  op: `${entity}.update`,
-  title: `Edit ${WHAT[entity]} ${item.index} of ${node.ref}`,
-  fixed: { ...at(node), index: item.index },
-  initial: { text: item.text, met: item.met },
+export const criterionUpdate = (node: NodeView, item: CheckItem): OpRequest => ({
+  op: "criterion.update",
+  title: `Edit criterion ${item.slug} of ${node.ref}`,
+  fixed: { ...at(node), criterion: item.slug },
+  initial: { text: item.text, met: item.met, slug: item.slug },
   changesOnly: true,
   submitLabel: "Save",
 })
 
 export const itemRemove = (entity: ListEntity, node: NodeView, item: CheckItem): OpRequest => ({
   op: `${entity}.remove`,
-  title: `Remove ${WHAT[entity]} ${item.index} from ${node.ref}?`,
+  title: `Remove ${WHAT[entity]} ${item.slug} from ${node.ref}?`,
   description: item.text,
-  fixed: { ...at(node), index: item.index },
+  fixed: { ...at(node), [entity]: item.slug },
   destructive: true,
   submitLabel: "Remove",
+})
+
+export const requirementAdd = (node: NodeView): OpRequest => ({
+  op: "requirement.add",
+  title: `Add a requirement to ${node.ref}`,
+  description: "What must be true before work on it can start. Exactly one former node provides it; it is met once that node is done.",
+  fixed: at(node),
+  submitLabel: "Add",
+})
+
+export const requirementUpdate = (node: NodeView, item: RequirementView): OpRequest => ({
+  op: "requirement.update",
+  title: `Edit requirement ${item.slug} of ${node.ref}`,
+  description: "Change its wording, its slug, or the former node that provides it. A link that closes a loop is refused.",
+  fixed: { ...at(node), requirement: item.slug },
+  initial: { text: item.text, providedBy: item.providedBy, slug: item.slug },
+  changesOnly: true,
+  submitLabel: "Save",
 })
 
 export const resourceAdd = (node: NodeView): OpRequest => ({
@@ -142,45 +161,20 @@ export const resourceAdd = (node: NodeView): OpRequest => ({
 
 export const resourceUpdate = (node: NodeView, resource: ResourceView): OpRequest => ({
   op: "resource.update",
-  title: `Edit resource ${resource.index} of ${node.ref}`,
-  fixed: { ...at(node), index: resource.index },
-  initial: { kind: resource.kind, name: resource.name, quantity: resource.quantity, unit: resource.unit },
+  title: `Edit resource ${resource.slug} of ${node.ref}`,
+  fixed: { ...at(node), resource: resource.slug },
+  initial: { kind: resource.kind, name: resource.name, quantity: resource.quantity, unit: resource.unit, slug: resource.slug },
   changesOnly: true,
   submitLabel: "Save",
 })
 
 export const resourceRemove = (node: NodeView, resource: ResourceView): OpRequest => ({
   op: "resource.remove",
-  title: `Remove resource ${resource.index} from ${node.ref}?`,
+  title: `Remove resource ${resource.slug} from ${node.ref}?`,
   description: `${resource.kind}: ${resource.name}`,
-  fixed: { ...at(node), index: resource.index },
+  fixed: { ...at(node), resource: resource.slug },
   destructive: true,
   submitLabel: "Remove",
-})
-
-export const requirementAdd = (node: NodeView): OpRequest => ({
-  op: "requirement.add",
-  title: `Add a requirement to ${node.ref}`,
-  description: "What must be true before work on it can start. Name the former nodes that provide it, one per line, or none to tick it by hand.",
-  fixed: at(node),
-  submitLabel: "Add",
-})
-
-export const requirementLink = (node: NodeView, item: RequirementView): OpRequest => ({
-  op: "requirement.link",
-  title: `Who provides requirement ${item.index} of ${node.ref}?`,
-  description: `${item.text}. The node must come before ${node.ref}: a link that closes a loop is refused.`,
-  fixed: { ...at(node), index: item.index },
-  submitLabel: "Link",
-})
-
-export const requirementUnlink = (node: NodeView, item: RequirementView, by: string): OpRequest => ({
-  op: "requirement.unlink",
-  title: `${by} no longer provides requirement ${item.index} of ${node.ref}?`,
-  description: item.text,
-  fixed: { ...at(node), index: item.index, by },
-  destructive: true,
-  submitLabel: "Unlink",
 })
 
 export const messageAdd = (node: NodeView): OpRequest => ({
@@ -193,8 +187,8 @@ export const messageAdd = (node: NodeView): OpRequest => ({
 
 export const messageUpdate = (node: NodeView, message: MessageView): OpRequest => ({
   op: "message.update",
-  title: `Edit message ${message.index} of ${node.ref}`,
-  fixed: { ...at(node), index: message.index },
+  title: `Edit message ${message.id} of ${node.ref}`,
+  fixed: { ...at(node), message: message.id },
   initial: { text: message.text, author: message.author },
   changesOnly: true,
   submitLabel: "Save",
@@ -202,9 +196,9 @@ export const messageUpdate = (node: NodeView, message: MessageView): OpRequest =
 
 export const messageRemove = (node: NodeView, message: MessageView): OpRequest => ({
   op: "message.remove",
-  title: `Remove message ${message.index} from ${node.ref}?`,
+  title: `Remove message ${message.id} from ${node.ref}?`,
   description: `${message.author}: ${message.text}`,
-  fixed: { ...at(node), index: message.index },
+  fixed: { ...at(node), message: message.id },
   destructive: true,
   submitLabel: "Remove",
 })

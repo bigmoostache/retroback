@@ -17,18 +17,19 @@ export interface Gap {
 }
 
 export interface CheckItem {
-  index: number
+  /** Handle of the item, unique in its node. */
+  slug: string
   text: string
   met: boolean
 }
 
 export interface RequirementView extends CheckItem {
-  /** Former nodes that provide it. When there are some, `met` is true once they are all done. */
-  providedBy: string[]
+  /** The former node that provides it. `met` is true once it is done. */
+  providedBy: string
 }
 
 export interface ResourceView {
-  index: number
+  slug: string
   kind: string
   name: string
   quantity: number
@@ -36,7 +37,8 @@ export interface ResourceView {
 }
 
 export interface MessageView {
-  index: number
+  /** Handle of the message, e.g. m-7f3a2c. */
+  id: string
   author: string
   text: string
   /** When it was written, ISO 8601. */

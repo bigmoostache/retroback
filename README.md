@@ -8,7 +8,7 @@ Each step stays within a small gap (1% by default): small steps, each one
 reachable from the one before.
 
 Every node has a title, a description, precise success criteria, requirements
-(each one provided by earlier nodes, or ticked by hand), resources of any kind,
+(each one provided by exactly one earlier node), resources of any kind,
 a size from 0 to 100, and messages. Requirements make the graph, which
 always stays free of loops.
 
@@ -50,11 +50,15 @@ rb plan create --title 'More orders' --target '1120 orders a week' --metric orde
   --present-value 1000 --target-value 1120
 rb node create --title 'Target'                    # the first node is the target
 rb node create --title 'Second line' --enables N1  # one step before N1, provides one of its requirements
-rb requirement link --node N1 --index 1 --by N2
-rb node unlock --ref N1                            # what to tackle now to reach N1
-rb plan check                                      # gaps, criteria, requirements, resources
+rb requirement update --node N1 --requirement second-line --provided-by N3
+rb node unlock --ref N1                            # what to tackle now to reach N1, and the size left
+rb plan check                                      # gaps, criteria, resources
 rb message add --node N2 --text 'Who owns this?'
 ```
+
+Nothing is addressed by its position: criteria, requirements and resources by
+a slug unique in their node (`--criterion`, `--requirement`, `--resource`),
+messages by their id (`--message m-7f3a2c`). `rb node show` lists them.
 
 ## Layout
 

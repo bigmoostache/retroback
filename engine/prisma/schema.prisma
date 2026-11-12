@@ -54,78 +54,79 @@ model Node {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
   criteria     Criterion[]
-  requirements Requirement[]
+  /// What must be true before work on this node can start, each provided by one former node.
+  requirements Requirement[]  @relation("Requires")
   resources    ResourceNeed[]
   messages     Message[]
   /// How big the node is, from 0 (tiny) to 100 (largest).
-  size   Int            @default(50)
+  size         Int            @default(50)
   /// Requirements of later nodes that this node provides.
-  provides     RequirementProvider[]
+  provides     Requirement[]  @relation("Provides")
 
   @@unique([planId, ref])
   @@unique([planId, seq])
 }
 
-/// A success criterion: precise and checkable.
+/// A success criterion: precise and checkable. Addressed by its slug, unique in the node.
 model Criterion {
   id       String  @id @default(cuid())
   nodeId   String
   node     Node    @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  slug     String
+  /// Display order only: never used to address the criterion.
   position Int
   text     String
   met      Boolean @default(false)
 
+  @@unique([nodeId, slug])
   @@index([nodeId, position])
 }
 
-/// Something that must be true before work on the node can start.
-/// When nodes provide it, it is met once they are all done, and those nodes
-/// come before this one in the plan: these links are the edges of the graph.
-/// Without a provider, it is ticked by hand (`met`).
+/// Something that must be true before work on the node can start. Exactly one
+/// former node provides it, and it is met once that node is done. These links
+/// are the edges of the graph.
 model Requirement {
-  id        String                @id @default(cuid())
-  nodeId    String
-  node      Node                  @relation(fields: [nodeId], references: [id], onDelete: Cascade)
-  position  Int
-  text      String
-  met       Boolean               @default(false)
-  providers RequirementProvider[]
+  id         String @id @default(cuid())
+  nodeId     String
+  node       Node   @relation("Requires", fields: [nodeId], references: [id], onDelete: Cascade)
+  slug       String
+  /// Display order only: never used to address the requirement.
+  position   Int
+  text       String
+  providerId String
+  provider   Node   @relation("Provides", fields: [providerId], references: [id], onDelete: Cascade)
 
+  @@unique([nodeId, slug])
   @@index([nodeId, position])
-}
-
-/// A node that provides a requirement of a later node.
-model RequirementProvider {
-  requirementId String
-  requirement   Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
-  nodeId        String
-  node          Node        @relation(fields: [nodeId], references: [id], onDelete: Cascade)
-
-  @@id([requirementId, nodeId])
-  @@index([nodeId])
+  @@index([providerId])
 }
 
 /// A resource a node needs. `kind` is free text: human, computing, capital,
-/// machine, or anything else.
+/// machine, or anything else. Addressed by its slug, unique in the node.
 model ResourceNeed {
   id       String @id @default(cuid())
   nodeId   String
   node     Node   @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  slug     String
+  /// Display order only: never used to address the resource.
   position Int
   kind     String
   name     String
   quantity Float
   unit     String
 
+  @@unique([nodeId, slug])
   @@index([nodeId, position])
 }
 
 /// A message under a node: a note, a question, a decision. Written by a person
-/// or an agent; `author` is free text.
+/// or an agent; `author` is free text. Addressed by `handle` (m-xxxxxx).
 model Message {
   id        String    @id @default(cuid())
   nodeId    String
   node      Node      @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  handle    String
+  /// Display order only: never used to address the message.
   position  Int
   author    String
   text      String
@@ -133,5 +134,6 @@ model Message {
   /// Set when the text changes after it was posted.
   editedAt  DateTime?
 
+  @@unique([nodeId, handle])
   @@index([nodeId, position])
 }

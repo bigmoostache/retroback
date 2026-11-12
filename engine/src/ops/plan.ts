@@ -1,16 +1,8 @@
 import { z } from "zod"
 import { db } from "../db.ts"
+import { slugify } from "../slug.ts"
 import { loadPlan, planOf, summarise } from "../views.ts"
 import { defineOp, OpError, planFlag } from "./define.ts"
-
-const slugify = (s: string) =>
-  s
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 40)
 
 function assertScale(s: { presentValue: number; targetValue: number; gapPercent: number }) {
   if (s.presentValue === s.targetValue) {
