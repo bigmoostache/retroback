@@ -119,11 +119,10 @@ export function checkPlan(plan: Scale & { slug: string }, nodes: NodeView[]): Ch
           "warning",
           "vague_criterion",
           n.ref,
-          `${n.ref} criterion ${c.index} has no figure: state a number, a date or a threshold.`,
+          `${n.ref} criterion "${c.slug}" has no figure: state a number, a date or a threshold.`,
         )
       }
     }
-    if (n.requirements.length === 0) add("warning", "no_requirements", n.ref, `${n.ref} has no requirement.`)
     if (n.resources.length === 0) add("warning", "no_resources", n.ref, `${n.ref} needs no resource.`)
     if (n.enables.length === 0 && !atTarget(n)) {
       add("warning", "leads_nowhere", n.ref, `${n.ref} enables no later node and is not the target.`)

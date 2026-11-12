@@ -43,7 +43,7 @@ var init_class = __esm({
       "clientVersion": "7.10.1",
       "engineVersion": "d1b3f377ca835d73fd50954a5e22128b9ebdd6b8",
       "activeProvider": "postgresql",
-      "inlineSchema": '// Retroback: plan backward from a target (future) to now (present).\n//\n// A Plan fixes one measurable metric, its value today (presentValue) and the\n// value aimed at (targetValue). Nodes are created from the target backward.\n// Each node states the metric level reached once it is done. The gap between a\n// node and the former nodes it depends on must stay within plan.gapPercent\n// (the 1% rule): small steps, each one reachable from the one before.\n\ngenerator client {\n  provider = "prisma-client"\n  output   = "../src/generated/prisma"\n}\n\ndatasource db {\n  provider = "postgresql"\n}\n\nenum NodeStatus {\n  todo\n  doing\n  done\n}\n\nmodel Plan {\n  id           String   @id @default(cuid())\n  slug         String   @unique\n  title        String\n  /// The target statement: what is true in the future.\n  target       String\n  /// What is measured to tell how far along we are.\n  metric       String\n  unit         String\n  presentValue Float\n  targetValue  Float\n  /// Maximum allowed gap between a node and what it depends on, in percent.\n  gapPercent   Float    @default(1)\n  createdAt    DateTime @default(now())\n  updatedAt    DateTime @updatedAt\n  nodes        Node[]\n}\n\nmodel Node {\n  id           String                @id @default(cuid())\n  planId       String\n  plan         Plan                  @relation(fields: [planId], references: [id], onDelete: Cascade)\n  /// Short handle, unique in the plan: N1 is the target, numbers grow backward.\n  ref          String\n  seq          Int\n  title        String\n  description  String                @default("")\n  /// Metric value reached once this node is done.\n  level        Float\n  status       NodeStatus            @default(todo)\n  createdAt    DateTime              @default(now())\n  updatedAt    DateTime              @updatedAt\n  criteria     Criterion[]\n  requirements Requirement[]\n  resources    ResourceNeed[]\n  messages     Message[]\n  /// How big the node is, from 0 (tiny) to 100 (largest).\n  size         Int                   @default(50)\n  /// Requirements of later nodes that this node provides.\n  provides     RequirementProvider[]\n\n  @@unique([planId, ref])\n  @@unique([planId, seq])\n}\n\n/// A success criterion: precise and checkable.\nmodel Criterion {\n  id       String  @id @default(cuid())\n  nodeId   String\n  node     Node    @relation(fields: [nodeId], references: [id], onDelete: Cascade)\n  position Int\n  text     String\n  met      Boolean @default(false)\n\n  @@index([nodeId, position])\n}\n\n/// Something that must be true before work on the node can start.\n/// When nodes provide it, it is met once they are all done, and those nodes\n/// come before this one in the plan: these links are the edges of the graph.\n/// Without a provider, it is ticked by hand (`met`).\nmodel Requirement {\n  id        String                @id @default(cuid())\n  nodeId    String\n  node      Node                  @relation(fields: [nodeId], references: [id], onDelete: Cascade)\n  position  Int\n  text      String\n  met       Boolean               @default(false)\n  providers RequirementProvider[]\n\n  @@index([nodeId, position])\n}\n\n/// A node that provides a requirement of a later node.\nmodel RequirementProvider {\n  requirementId String\n  requirement   Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)\n  nodeId        String\n  node          Node        @relation(fields: [nodeId], references: [id], onDelete: Cascade)\n\n  @@id([requirementId, nodeId])\n  @@index([nodeId])\n}\n\n/// A resource a node needs. `kind` is free text: human, computing, capital,\n/// machine, or anything else.\nmodel ResourceNeed {\n  id       String @id @default(cuid())\n  nodeId   String\n  node     Node   @relation(fields: [nodeId], references: [id], onDelete: Cascade)\n  position Int\n  kind     String\n  name     String\n  quantity Float\n  unit     String\n\n  @@index([nodeId, position])\n}\n\n/// A message under a node: a note, a question, a decision. Written by a person\n/// or an agent; `author` is free text.\nmodel Message {\n  id        String    @id @default(cuid())\n  nodeId    String\n  node      Node      @relation(fields: [nodeId], references: [id], onDelete: Cascade)\n  position  Int\n  author    String\n  text      String\n  createdAt DateTime  @default(now())\n  /// Set when the text changes after it was posted.\n  editedAt  DateTime?\n\n  @@index([nodeId, position])\n}\n',
+      "inlineSchema": '// Retroback: plan backward from a target (future) to now (present).\n//\n// A Plan fixes one measurable metric, its value today (presentValue) and the\n// value aimed at (targetValue). Nodes are created from the target backward.\n// Each node states the metric level reached once it is done. The gap between a\n// node and the former nodes it depends on must stay within plan.gapPercent\n// (the 1% rule): small steps, each one reachable from the one before.\n\ngenerator client {\n  provider = "prisma-client"\n  output   = "../src/generated/prisma"\n}\n\ndatasource db {\n  provider = "postgresql"\n}\n\nenum NodeStatus {\n  todo\n  doing\n  done\n}\n\nmodel Plan {\n  id           String   @id @default(cuid())\n  slug         String   @unique\n  title        String\n  /// The target statement: what is true in the future.\n  target       String\n  /// What is measured to tell how far along we are.\n  metric       String\n  unit         String\n  presentValue Float\n  targetValue  Float\n  /// Maximum allowed gap between a node and what it depends on, in percent.\n  gapPercent   Float    @default(1)\n  createdAt    DateTime @default(now())\n  updatedAt    DateTime @updatedAt\n  nodes        Node[]\n}\n\nmodel Node {\n  id           String         @id @default(cuid())\n  planId       String\n  plan         Plan           @relation(fields: [planId], references: [id], onDelete: Cascade)\n  /// Short handle, unique in the plan: N1 is the target, numbers grow backward.\n  ref          String\n  seq          Int\n  title        String\n  description  String         @default("")\n  /// Metric value reached once this node is done.\n  level        Float\n  status       NodeStatus     @default(todo)\n  createdAt    DateTime       @default(now())\n  updatedAt    DateTime       @updatedAt\n  criteria     Criterion[]\n  /// What must be true before work on this node can start, each provided by one former node.\n  requirements Requirement[]  @relation("Requires")\n  resources    ResourceNeed[]\n  messages     Message[]\n  /// How big the node is, from 0 (tiny) to 100 (largest).\n  size         Int            @default(50)\n  /// Requirements of later nodes that this node provides.\n  provides     Requirement[]  @relation("Provides")\n\n  @@unique([planId, ref])\n  @@unique([planId, seq])\n}\n\n/// A success criterion: precise and checkable. Addressed by its slug, unique in the node.\nmodel Criterion {\n  id       String  @id @default(cuid())\n  nodeId   String\n  node     Node    @relation(fields: [nodeId], references: [id], onDelete: Cascade)\n  slug     String\n  /// Display order only: never used to address the criterion.\n  position Int\n  text     String\n  met      Boolean @default(false)\n\n  @@unique([nodeId, slug])\n  @@index([nodeId, position])\n}\n\n/// Something that must be true before work on the node can start. Exactly one\n/// former node provides it, and it is met once that node is done. These links\n/// are the edges of the graph.\nmodel Requirement {\n  id         String @id @default(cuid())\n  nodeId     String\n  node       Node   @relation("Requires", fields: [nodeId], references: [id], onDelete: Cascade)\n  slug       String\n  /// Display order only: never used to address the requirement.\n  position   Int\n  text       String\n  providerId String\n  provider   Node   @relation("Provides", fields: [providerId], references: [id], onDelete: Cascade)\n\n  @@unique([nodeId, slug])\n  @@index([nodeId, position])\n  @@index([providerId])\n}\n\n/// A resource a node needs. `kind` is free text: human, computing, capital,\n/// machine, or anything else. Addressed by its slug, unique in the node.\nmodel ResourceNeed {\n  id       String @id @default(cuid())\n  nodeId   String\n  node     Node   @relation(fields: [nodeId], references: [id], onDelete: Cascade)\n  slug     String\n  /// Display order only: never used to address the resource.\n  position Int\n  kind     String\n  name     String\n  quantity Float\n  unit     String\n\n  @@unique([nodeId, slug])\n  @@index([nodeId, position])\n}\n\n/// A message under a node: a note, a question, a decision. Written by a person\n/// or an agent; `author` is free text. Addressed by `handle` (m-xxxxxx).\nmodel Message {\n  id        String    @id @default(cuid())\n  nodeId    String\n  node      Node      @relation(fields: [nodeId], references: [id], onDelete: Cascade)\n  handle    String\n  /// Display order only: never used to address the message.\n  position  Int\n  author    String\n  text      String\n  createdAt DateTime  @default(now())\n  /// Set when the text changes after it was posted.\n  editedAt  DateTime?\n\n  @@unique([nodeId, handle])\n  @@index([nodeId, position])\n}\n',
       "runtimeDataModel": {
         "models": {},
         "enums": {},
@@ -54,10 +54,10 @@ var init_class = __esm({
         "graph": ""
       }
     };
-    config.runtimeDataModel = JSON.parse('{"models":{"Plan":{"fields":[{"name":"id","kind":"scalar","type":"String"},{"name":"slug","kind":"scalar","type":"String"},{"name":"title","kind":"scalar","type":"String"},{"name":"target","kind":"scalar","type":"String"},{"name":"metric","kind":"scalar","type":"String"},{"name":"unit","kind":"scalar","type":"String"},{"name":"presentValue","kind":"scalar","type":"Float"},{"name":"targetValue","kind":"scalar","type":"Float"},{"name":"gapPercent","kind":"scalar","type":"Float"},{"name":"createdAt","kind":"scalar","type":"DateTime"},{"name":"updatedAt","kind":"scalar","type":"DateTime"},{"name":"nodes","kind":"object","type":"Node","relationName":"NodeToPlan"}],"dbName":null,"schema":null},"Node":{"fields":[{"name":"id","kind":"scalar","type":"String"},{"name":"planId","kind":"scalar","type":"String"},{"name":"plan","kind":"object","type":"Plan","relationName":"NodeToPlan"},{"name":"ref","kind":"scalar","type":"String"},{"name":"seq","kind":"scalar","type":"Int"},{"name":"title","kind":"scalar","type":"String"},{"name":"description","kind":"scalar","type":"String"},{"name":"level","kind":"scalar","type":"Float"},{"name":"status","kind":"enum","type":"NodeStatus"},{"name":"createdAt","kind":"scalar","type":"DateTime"},{"name":"updatedAt","kind":"scalar","type":"DateTime"},{"name":"criteria","kind":"object","type":"Criterion","relationName":"CriterionToNode"},{"name":"requirements","kind":"object","type":"Requirement","relationName":"NodeToRequirement"},{"name":"resources","kind":"object","type":"ResourceNeed","relationName":"NodeToResourceNeed"},{"name":"messages","kind":"object","type":"Message","relationName":"MessageToNode"},{"name":"size","kind":"scalar","type":"Int"},{"name":"provides","kind":"object","type":"RequirementProvider","relationName":"NodeToRequirementProvider"}],"dbName":null,"schema":null},"Criterion":{"fields":[{"name":"id","kind":"scalar","type":"String"},{"name":"nodeId","kind":"scalar","type":"String"},{"name":"node","kind":"object","type":"Node","relationName":"CriterionToNode"},{"name":"position","kind":"scalar","type":"Int"},{"name":"text","kind":"scalar","type":"String"},{"name":"met","kind":"scalar","type":"Boolean"}],"dbName":null,"schema":null},"Requirement":{"fields":[{"name":"id","kind":"scalar","type":"String"},{"name":"nodeId","kind":"scalar","type":"String"},{"name":"node","kind":"object","type":"Node","relationName":"NodeToRequirement"},{"name":"position","kind":"scalar","type":"Int"},{"name":"text","kind":"scalar","type":"String"},{"name":"met","kind":"scalar","type":"Boolean"},{"name":"providers","kind":"object","type":"RequirementProvider","relationName":"RequirementToRequirementProvider"}],"dbName":null,"schema":null},"RequirementProvider":{"fields":[{"name":"requirementId","kind":"scalar","type":"String"},{"name":"requirement","kind":"object","type":"Requirement","relationName":"RequirementToRequirementProvider"},{"name":"nodeId","kind":"scalar","type":"String"},{"name":"node","kind":"object","type":"Node","relationName":"NodeToRequirementProvider"}],"dbName":null,"schema":null},"ResourceNeed":{"fields":[{"name":"id","kind":"scalar","type":"String"},{"name":"nodeId","kind":"scalar","type":"String"},{"name":"node","kind":"object","type":"Node","relationName":"NodeToResourceNeed"},{"name":"position","kind":"scalar","type":"Int"},{"name":"kind","kind":"scalar","type":"String"},{"name":"name","kind":"scalar","type":"String"},{"name":"quantity","kind":"scalar","type":"Float"},{"name":"unit","kind":"scalar","type":"String"}],"dbName":null,"schema":null},"Message":{"fields":[{"name":"id","kind":"scalar","type":"String"},{"name":"nodeId","kind":"scalar","type":"String"},{"name":"node","kind":"object","type":"Node","relationName":"MessageToNode"},{"name":"position","kind":"scalar","type":"Int"},{"name":"author","kind":"scalar","type":"String"},{"name":"text","kind":"scalar","type":"String"},{"name":"createdAt","kind":"scalar","type":"DateTime"},{"name":"editedAt","kind":"scalar","type":"DateTime"}],"dbName":null,"schema":null}},"enums":{},"types":{}}');
+    config.runtimeDataModel = JSON.parse('{"models":{"Plan":{"fields":[{"name":"id","kind":"scalar","type":"String"},{"name":"slug","kind":"scalar","type":"String"},{"name":"title","kind":"scalar","type":"String"},{"name":"target","kind":"scalar","type":"String"},{"name":"metric","kind":"scalar","type":"String"},{"name":"unit","kind":"scalar","type":"String"},{"name":"presentValue","kind":"scalar","type":"Float"},{"name":"targetValue","kind":"scalar","type":"Float"},{"name":"gapPercent","kind":"scalar","type":"Float"},{"name":"createdAt","kind":"scalar","type":"DateTime"},{"name":"updatedAt","kind":"scalar","type":"DateTime"},{"name":"nodes","kind":"object","type":"Node","relationName":"NodeToPlan"}],"dbName":null,"schema":null},"Node":{"fields":[{"name":"id","kind":"scalar","type":"String"},{"name":"planId","kind":"scalar","type":"String"},{"name":"plan","kind":"object","type":"Plan","relationName":"NodeToPlan"},{"name":"ref","kind":"scalar","type":"String"},{"name":"seq","kind":"scalar","type":"Int"},{"name":"title","kind":"scalar","type":"String"},{"name":"description","kind":"scalar","type":"String"},{"name":"level","kind":"scalar","type":"Float"},{"name":"status","kind":"enum","type":"NodeStatus"},{"name":"createdAt","kind":"scalar","type":"DateTime"},{"name":"updatedAt","kind":"scalar","type":"DateTime"},{"name":"criteria","kind":"object","type":"Criterion","relationName":"CriterionToNode"},{"name":"requirements","kind":"object","type":"Requirement","relationName":"Requires"},{"name":"resources","kind":"object","type":"ResourceNeed","relationName":"NodeToResourceNeed"},{"name":"messages","kind":"object","type":"Message","relationName":"MessageToNode"},{"name":"size","kind":"scalar","type":"Int"},{"name":"provides","kind":"object","type":"Requirement","relationName":"Provides"}],"dbName":null,"schema":null},"Criterion":{"fields":[{"name":"id","kind":"scalar","type":"String"},{"name":"nodeId","kind":"scalar","type":"String"},{"name":"node","kind":"object","type":"Node","relationName":"CriterionToNode"},{"name":"slug","kind":"scalar","type":"String"},{"name":"position","kind":"scalar","type":"Int"},{"name":"text","kind":"scalar","type":"String"},{"name":"met","kind":"scalar","type":"Boolean"}],"dbName":null,"schema":null},"Requirement":{"fields":[{"name":"id","kind":"scalar","type":"String"},{"name":"nodeId","kind":"scalar","type":"String"},{"name":"node","kind":"object","type":"Node","relationName":"Requires"},{"name":"slug","kind":"scalar","type":"String"},{"name":"position","kind":"scalar","type":"Int"},{"name":"text","kind":"scalar","type":"String"},{"name":"providerId","kind":"scalar","type":"String"},{"name":"provider","kind":"object","type":"Node","relationName":"Provides"}],"dbName":null,"schema":null},"ResourceNeed":{"fields":[{"name":"id","kind":"scalar","type":"String"},{"name":"nodeId","kind":"scalar","type":"String"},{"name":"node","kind":"object","type":"Node","relationName":"NodeToResourceNeed"},{"name":"slug","kind":"scalar","type":"String"},{"name":"position","kind":"scalar","type":"Int"},{"name":"kind","kind":"scalar","type":"String"},{"name":"name","kind":"scalar","type":"String"},{"name":"quantity","kind":"scalar","type":"Float"},{"name":"unit","kind":"scalar","type":"String"}],"dbName":null,"schema":null},"Message":{"fields":[{"name":"id","kind":"scalar","type":"String"},{"name":"nodeId","kind":"scalar","type":"String"},{"name":"node","kind":"object","type":"Node","relationName":"MessageToNode"},{"name":"handle","kind":"scalar","type":"String"},{"name":"position","kind":"scalar","type":"Int"},{"name":"author","kind":"scalar","type":"String"},{"name":"text","kind":"scalar","type":"String"},{"name":"createdAt","kind":"scalar","type":"DateTime"},{"name":"editedAt","kind":"scalar","type":"DateTime"}],"dbName":null,"schema":null}},"enums":{},"types":{}}');
     config.parameterizationSchema = {
-      strings: JSON.parse('["where","orderBy","cursor","plan","node","criteria","requirement","providers","_count","requirements","resources","messages","provides","nodes","Plan.findUnique","Plan.findUniqueOrThrow","Plan.findFirst","Plan.findFirstOrThrow","Plan.findMany","data","Plan.createOne","Plan.createMany","Plan.createManyAndReturn","Plan.updateOne","Plan.updateMany","Plan.updateManyAndReturn","create","update","Plan.upsertOne","Plan.deleteOne","Plan.deleteMany","having","_avg","_sum","_min","_max","Plan.groupBy","Plan.aggregate","Node.findUnique","Node.findUniqueOrThrow","Node.findFirst","Node.findFirstOrThrow","Node.findMany","Node.createOne","Node.createMany","Node.createManyAndReturn","Node.updateOne","Node.updateMany","Node.updateManyAndReturn","Node.upsertOne","Node.deleteOne","Node.deleteMany","Node.groupBy","Node.aggregate","Criterion.findUnique","Criterion.findUniqueOrThrow","Criterion.findFirst","Criterion.findFirstOrThrow","Criterion.findMany","Criterion.createOne","Criterion.createMany","Criterion.createManyAndReturn","Criterion.updateOne","Criterion.updateMany","Criterion.updateManyAndReturn","Criterion.upsertOne","Criterion.deleteOne","Criterion.deleteMany","Criterion.groupBy","Criterion.aggregate","Requirement.findUnique","Requirement.findUniqueOrThrow","Requirement.findFirst","Requirement.findFirstOrThrow","Requirement.findMany","Requirement.createOne","Requirement.createMany","Requirement.createManyAndReturn","Requirement.updateOne","Requirement.updateMany","Requirement.updateManyAndReturn","Requirement.upsertOne","Requirement.deleteOne","Requirement.deleteMany","Requirement.groupBy","Requirement.aggregate","RequirementProvider.findUnique","RequirementProvider.findUniqueOrThrow","RequirementProvider.findFirst","RequirementProvider.findFirstOrThrow","RequirementProvider.findMany","RequirementProvider.createOne","RequirementProvider.createMany","RequirementProvider.createManyAndReturn","RequirementProvider.updateOne","RequirementProvider.updateMany","RequirementProvider.updateManyAndReturn","RequirementProvider.upsertOne","RequirementProvider.deleteOne","RequirementProvider.deleteMany","RequirementProvider.groupBy","RequirementProvider.aggregate","ResourceNeed.findUnique","ResourceNeed.findUniqueOrThrow","ResourceNeed.findFirst","ResourceNeed.findFirstOrThrow","ResourceNeed.findMany","ResourceNeed.createOne","ResourceNeed.createMany","ResourceNeed.createManyAndReturn","ResourceNeed.updateOne","ResourceNeed.updateMany","ResourceNeed.updateManyAndReturn","ResourceNeed.upsertOne","ResourceNeed.deleteOne","ResourceNeed.deleteMany","ResourceNeed.groupBy","ResourceNeed.aggregate","Message.findUnique","Message.findUniqueOrThrow","Message.findFirst","Message.findFirstOrThrow","Message.findMany","Message.createOne","Message.createMany","Message.createManyAndReturn","Message.updateOne","Message.updateMany","Message.updateManyAndReturn","Message.upsertOne","Message.deleteOne","Message.deleteMany","Message.groupBy","Message.aggregate","AND","OR","NOT","id","nodeId","position","author","text","createdAt","editedAt","equals","in","notIn","lt","lte","gt","gte","not","contains","startsWith","endsWith","kind","name","quantity","unit","requirementId","met","planId","ref","seq","title","description","level","NodeStatus","status","updatedAt","size","slug","target","metric","presentValue","targetValue","gapPercent","every","some","none","requirementId_nodeId","planId_ref","planId_seq","is","isNot","connectOrCreate","upsert","createMany","set","disconnect","delete","connect","updateMany","deleteMany","increment","decrement","multiply","divide"]'),
-      graph: "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_QEAIZ4BAQD7AQAhpAEBAPsBACGpAUAA_QEAIasBAQD7AQAhrAEBAPsBACGtAQEA-wEAIa4BCACGAgAhrwEIAIYCACGwAQgAhgIAIQIAAAABACATAAAuACALiQEBAPsBACGOAUAA_QEAIZ4BAQD7AQAhpAEBAPsBACGpAUAA_QEAIasBAQD7AQAhrAEBAPsBACGtAQEA-wEAIa4BCACGAgAhrwEIAIYCACGwAQgAhgIAIQIAAAAkACATAAAwACACAAAAJAAgEwAAMAAgAwAAAAEAIBoAACkAIBsAAC4AIAEAAAABACABAAAAJAAgBQgAAPgCACAgAAD5AgAgIQAA_AIAICIAAPsCACAjAAD6AgAgDoYBAADaAQAwhwEAADcAEIgBAADaAQAwiQEBAL8BACGOAUAAwQEAIZ4BAQC_AQAhpAEBAL8BACGpAUAAwQEAIasBAQC_AQAhrAEBAL8BACGtAQEAvwEAIa4BCADOAQAhrwEIAM4BACGwAQgAzgEAIQMAAAAkACABAAA2ADAfAAA3ACADAAAAJAAgAQAAJQAwAgAAAQAgAQAAAAUAIAEAAAAFACADAAAAAwAgAQAABAAwAgAABQAgAwAAAAMAIAEAAAQAMAIAAAUAIAMAAAADACABAAAEADACAAAFACARAwAA8gIAIAUAAPMCACAJAAD0AgAgCgAA9QIAIAsAAPYCACAMAAD3AgAgiQEBAAAAAY4BQAAAAAGhAQEAAAABogEBAAAAAaMBAgAAAAGkAQEAAAABpQEBAAAAAaYBCAAAAAGoAQAAAKgBAqkBQAAAAAGqAQIAAAABARMAAD8AIAuJAQEAAAABjgFAAAAAAaEBAQAAAAGiAQEAAAABowECAAAAAaQBAQAAAAGlAQEAAAABpgEIAAAAAagBAAAAqAECqQFAAAAAAaoBAgAAAAEBEwAAQQAwARMAAEEAMBEDAACzAgAgBQAAtAIAIAkAALUCACAKAAC2AgAgCwAAtwIAIAwAALgCACCJAQEA-wEAIY4BQAD9AQAhoQEBAPsBACGiAQEA-wEAIaMBAgD8AQAhpAEBAPsBACGlAQEA-wEAIaYBCACGAgAhqAEAALICqAEiqQFAAP0BACGqAQIA_AEAIQIAAAAFACATAABEACALiQEBAPsBACGOAUAA_QEAIaEBAQD7AQAhogEBAPsBACGjAQIA_AEAIaQBAQD7AQAhpQEBAPsBACGmAQgAhgIAIagBAACyAqgBIqkBQAD9AQAhqgECAPwBACECAAAAAwAgEwAARgAgAgAAAAMAIBMAAEYAIAMAAAAFACAaAAA_ACAbAABEACABAAAABQAgAQAAAAMAIAUIAACtAgAgIAAArgIAICEAALECACAiAACwAgAgIwAArwIAIA6GAQAA1gEAMIcBAABNABCIAQAA1gEAMIkBAQC_AQAhjgFAAMEBACGhAQEAvwEAIaIBAQC_AQAhowECAMABACGkAQEAvwEAIaUBAQC_AQAhpgEIAM4BACGoAQAA1wGoASKpAUAAwQEAIaoBAgDAAQAhAwAAAAMAIAEAAEwAMB8AAE0AIAMAAAADACABAAAEADACAAAFACABAAAACQAgAQAAAAkAIAMAAAAHACABAAAIADACAAAJACADAAAABwAgAQAACAAwAgAACQAgAwAAAAcAIAEAAAgAMAIAAAkAIAYEAACsAgAgiQEBAAAAAYoBAQAAAAGLAQIAAAABjQEBAAAAAaABIAAAAAEBEwAAVQAgBYkBAQAAAAGKAQEAAAABiwECAAAAAY0BAQAAAAGgASAAAAABARMAAFcAMAETAABXADAGBAAAqwIAIIkBAQD7AQAhigEBAPsBACGLAQIA_AEAIY0BAQD7AQAhoAEgAJUCACECAAAACQAgEwAAWgAgBYkBAQD7AQAhigEBAPsBACGLAQIA_AEAIY0BAQD7AQAhoAEgAJUCACECAAAABwAgEwAAXAAgAgAAAAcAIBMAAFwAIAMAAAAJACAaAABVACAbAABaACABAAAACQAgAQAAAAcAIAUIAACmAgAgIAAApwIAICEAAKoCACAiAACpAgAgIwAAqAIAIAiGAQAA1QEAMIcBAABjABCIAQAA1QEAMIkBAQC_AQAhigEBAL8BACGLAQIAwAEAIY0BAQC_AQAhoAEgANIBACEDAAAABwAgAQAAYgAwHwAAYwAgAwAAAAcAIAEAAAgAMAIAAAkAIAEAAAANACABAAAADQAgAwAAAAsAIAEAAAwAMAIAAA0AIAMAAAALACABAAAMADACAAANACADAAAACwAgAQAADAAwAgAADQAgBwQAAKQCACAHAAClAgAgiQEBAAAAAYoBAQAAAAGLAQIAAAABjQEBAAAAAaABIAAAAAEBEwAAawAgBYkBAQAAAAGKAQEAAAABiwECAAAAAY0BAQAAAAGgASAAAAABARMAAG0AMAETAABtADAHBAAAlgIAIAcAAJcCACCJAQEA-wEAIYoBAQD7AQAhiwECAPwBACGNAQEA-wEAIaABIACVAgAhAgAAAA0AIBMAAHAAIAWJAQEA-wEAIYoBAQD7AQAhiwECAPwBACGNAQEA-wEAIaABIACVAgAhAgAAAAsAIBMAAHIAIAIAAAALACATAAByACADAAAADQAgGgAAawAgGwAAcAAgAQAAAA0AIAEAAAALACAFCAAAkAIAICAAAJECACAhAACUAgAgIgAAkwIAICMAAJICACAIhgEAANEBADCHAQAAeQAQiAEAANEBADCJAQEAvwEAIYoBAQC_AQAhiwECAMABACGNAQEAvwEAIaABIADSAQAhAwAAAAsAIAEAAHgAMB8AAHkAIAMAAAALACABAAAMADACAAANACABAAAAEQAgAQAAABEAIAMAAAAPACABAAAQADACAAARACADAAAADwAgAQAAEAAwAgAAEQAgAwAAAA8AIAEAABAAMAIAABEAIAQEAACPAgAgBgAAjgIAIIoBAQAAAAGfAQEAAAABARMAAIEBACACigEBAAAAAZ8BAQAAAAEBEwAAgwEAMAETAACDAQAwBAQAAI0CACAGAACMAgAgigEBAPsBACGfAQEA-wEAIQIAAAARACATAACGAQAgAooBAQD7AQAhnwEBAPsBACECAAAADwAgEwAAiAEAIAIAAAAPACATAACIAQAgAwAAABEAIBoAAIEBACAbAACGAQAgAQAAABEAIAEAAAAPACADCAAAiQIAICIAAIsCACAjAACKAgAgBYYBAADQAQAwhwEAAI8BABCIAQAA0AEAMIoBAQC_AQAhnwEBAL8BACEDAAAADwAgAQAAjgEAMB8AAI8BACADAAAADwAgAQAAEAAwAgAAEQAgAQAAABYAIAEAAAAWACADAAAAFAAgAQAAFQAwAgAAFgAgAwAAABQAIAEAABUAMAIAABYAIAMAAAAUACABAAAVADACAAAWACAIBAAAiAIAIIkBAQAAAAGKAQEAAAABiwECAAAAAZsBAQAAAAGcAQEAAAABnQEIAAAAAZ4BAQAAAAEBEwAAlwEAIAeJAQEAAAABigEBAAAAAYsBAgAAAAGbAQEAAAABnAEBAAAAAZ0BCAAAAAGeAQEAAAABARMAAJkBADABEwAAmQEAMAgEAACHAgAgiQEBAPsBACGKAQEA-wEAIYsBAgD8AQAhmwEBAPsBACGcAQEA-wEAIZ0BCACGAgAhngEBAPsBACECAAAAFgAgEwAAnAEAIAeJAQEA-wEAIYoBAQD7AQAhiwECAPwBACGbAQEA-wEAIZwBAQD7AQAhnQEIAIYCACGeAQEA-wEAIQIAAAAUACATAACeAQAgAgAAABQAIBMAAJ4BACADAAAAFgAgGgAAlwEAIBsAAJwBACABAAAAFgAgAQAAABQAIAUIAACBAgAgIAAAggIAICEAAIUCACAiAACEAgAgIwAAgwIAIAqGAQAAzQEAMIcBAAClAQAQiAEAAM0BADCJAQEAvwEAIYoBAQC_AQAhiwECAMABACGbAQEAvwEAIZwBAQC_AQAhnQEIAM4BACGeAQEAvwEAIQMAAAAUACABAACkAQAwHwAApQEAIAMAAAAUACABAAAVADACAAAWACABAAAAGgAgAQAAABoAIAMAAAAYACABAAAZADACAAAaACADAAAAGAAgAQAAGQAwAgAAGgAgAwAAABgAIAEAABkAMAIAABoAIAgEAACAAgAgiQEBAAAAAYoBAQAAAAGLAQIAAAABjAEBAAAAAY0BAQAAAAGOAUAAAAABjwFAAAAAAQETAACtAQAgB4kBAQAAAAGKAQEAAAABiwECAAAAAYwBAQAAAAGNAQEAAAABjgFAAAAAAY8BQAAAAAEBEwAArwEAMAETAACvAQAwCAQAAP8BACCJAQEA-wEAIYoBAQD7AQAhiwECAPwBACGMAQEA-wEAIY0BAQD7AQAhjgFAAP0BACGPAUAA_gEAIQIAAAAaACATAACyAQAgB4kBAQD7AQAhigEBAPsBACGLAQIA_AEAIYwBAQD7AQAhjQEBAPsBACGOAUAA_QEAIY8BQAD-AQAhAgAAABgAIBMAALQBACACAAAAGAAgEwAAtAEAIAMAAAAaACAaAACtAQAgGwAAsgEAIAEAAAAaACABAAAAGAAgBggAAPYBACAgAAD3AQAgIQAA-gEAICIAAPkBACAjAAD4AQAgjwEAAPUBACAKhgEAAL4BADCHAQAAuwEAEIgBAAC-AQAwiQEBAL8BACGKAQEAvwEAIYsBAgDAAQAhjAEBAL8BACGNAQEAvwEAIY4BQADBAQAhjwFAAMIBACEDAAAAGAAgAQAAugEAMB8AALsBACADAAAAGAAgAQAAGQAwAgAAGgAgCoYBAAC-AQAwhwEAALsBABCIAQAAvgEAMIkBAQC_AQAhigEBAL8BACGLAQIAwAEAIYwBAQC_AQAhjQEBAL8BACGOAUAAwQEAIY8BQADCAQAhDggAAMcBACAiAADMAQAgIwAAzAEAIJABAQAAAAGRAQEAAAAEkgEBAAAABJMBAQAAAAGUAQEAAAABlQEBAAAAAZYBAQAAAAGXAQEAywEAIZgBAQAAAAGZAQEAAAABmgEBAAAAAQ0IAADHAQAgIAAAygEAICEAAMcBACAiAADHAQAgIwAAxwEAIJABAgAAAAGRAQIAAAAEkgECAAAABJMBAgAAAAGUAQIAAAABlQECAAAAAZYBAgAAAAGXAQIAyQEAIQsIAADHAQAgIgAAyAEAICMAAMgBACCQAUAAAAABkQFAAAAABJIBQAAAAASTAUAAAAABlAFAAAAAAZUBQAAAAAGWAUAAAAABlwFAAMYBACELCAAAxAEAICIAAMUBACAjAADFAQAgkAFAAAAAAZEBQAAAAAWSAUAAAAAFkwFAAAAAAZQBQAAAAAGVAUAAAAABlgFAAAAAAZcBQADDAQAhCwgAAMQBACAiAADFAQAgIwAAxQEAIJABQAAAAAGRAUAAAAAFkgFAAAAABZMBQAAAAAGUAUAAAAABlQFAAAAAAZYBQAAAAAGXAUAAwwEAIQiQAQIAAAABkQECAAAABZIBAgAAAAWTAQIAAAABlAECAAAAAZUBAgAAAAGWAQIAAAABlwECAMQBACEIkAFAAAAAAZEBQAAAAAWSAUAAAAAFkwFAAAAAAZQBQAAAAAGVAUAAAAABlgFAAAAAAZcBQADFAQAhCwgAAMcBACAiAADIAQAgIwAAyAEAIJABQAAAAAGRAUAAAAAEkgFAAAAABJMBQAAAAAGUAUAAAAABlQFAAAAAAZYBQAAAAAGXAUAAxgEAIQiQAQIAAAABkQECAAAABJIBAgAAAASTAQIAAAABlAECAAAAAZUBAgAAAAGWAQIAAAABlwECAMcBACEIkAFAAAAAAZEBQAAAAASSAUAAAAAEkwFAAAAAAZQBQAAAAAGVAUAAAAABlgFAAAAAAZcBQADIAQAhDQgAAMcBACAgAADKAQAgIQAAxwEAICIAAMcBACAjAADHAQAgkAECAAAAAZEBAgAAAASSAQIAAAAEkwECAAAAAZQBAgAAAAGVAQIAAAABlgECAAAAAZcBAgDJAQAhCJABCAAAAAGRAQgAAAAEkgEIAAAABJMBCAAAAAGUAQgAAAABlQEIAAAAAZYBCAAAAAGXAQgAygEAIQ4IAADHAQAgIgAAzAEAICMAAMwBACCQAQEAAAABkQEBAAAABJIBAQAAAASTAQEAAAABlAEBAAAAAZUBAQAAAAGWAQEAAAABlwEBAMsBACGYAQEAAAABmQEBAAAAAZoBAQAAAAELkAEBAAAAAZEBAQAAAASSAQEAAAAEkwEBAAAAAZQBAQAAAAGVAQEAAAABlgEBAAAAAZcBAQDMAQAhmAEBAAAAAZkBAQAAAAGaAQEAAAABCoYBAADNAQAwhwEAAKUBABCIAQAAzQEAMIkBAQC_AQAhigEBAL8BACGLAQIAwAEAIZsBAQC_AQAhnAEBAL8BACGdAQgAzgEAIZ4BAQC_AQAhDQgAAMcBACAgAADKAQAgIQAAygEAICIAAMoBACAjAADKAQAgkAEIAAAAAZEBCAAAAASSAQgAAAAEkwEIAAAAAZQBCAAAAAGVAQgAAAABlgEIAAAAAZcBCADPAQAhDQgAAMcBACAgAADKAQAgIQAAygEAICIAAMoBACAjAADKAQAgkAEIAAAAAZEBCAAAAASSAQgAAAAEkwEIAAAAAZQBCAAAAAGVAQgAAAABlgEIAAAAAZcBCADPAQAhBYYBAADQAQAwhwEAAI8BABCIAQAA0AEAMIoBAQC_AQAhnwEBAL8BACEIhgEAANEBADCHAQAAeQAQiAEAANEBADCJAQEAvwEAIYoBAQC_AQAhiwECAMABACGNAQEAvwEAIaABIADSAQAhBQgAAMcBACAiAADUAQAgIwAA1AEAIJABIAAAAAGXASAA0wEAIQUIAADHAQAgIgAA1AEAICMAANQBACCQASAAAAABlwEgANMBACECkAEgAAAAAZcBIADUAQAhCIYBAADVAQAwhwEAAGMAEIgBAADVAQAwiQEBAL8BACGKAQEAvwEAIYsBAgDAAQAhjQEBAL8BACGgASAA0gEAIQ6GAQAA1gEAMIcBAABNABCIAQAA1gEAMIkBAQC_AQAhjgFAAMEBACGhAQEAvwEAIaIBAQC_AQAhowECAMABACGkAQEAvwEAIaUBAQC_AQAhpgEIAM4BACGoAQAA1wGoASKpAUAAwQEAIaoBAgDAAQAhBwgAAMcBACAiAADZAQAgIwAA2QEAIJABAAAAqAECkQEAAACoAQiSAQAAAKgBCJcBAADYAagBIgcIAADHAQAgIgAA2QEAICMAANkBACCQAQAAAKgBApEBAAAAqAEIkgEAAACoAQiXAQAA2AGoASIEkAEAAACoAQKRAQAAAKgBCJIBAAAAqAEIlwEAANkBqAEiDoYBAADaAQAwhwEAADcAEIgBAADaAQAwiQEBAL8BACGOAUAAwQEAIZ4BAQC_AQAhpAEBAL8BACGpAUAAwQEAIasBAQC_AQAhrAEBAL8BACGtAQEAvwEAIa4BCADOAQAhrwEIAM4BACGwAQgAzgEAIQ8NAADfAQAghgEAANsBADCHAQAAJAAQiAEAANsBADCJAQEA3AEAIY4BQADeAQAhngEBANwBACGkAQEA3AEAIakBQADeAQAhqwEBANwBACGsAQEA3AEAIa0BAQDcAQAhrgEIAN0BACGvAQgA3QEAIbABCADdAQAhC5ABAQAAAAGRAQEAAAAEkgEBAAAABJMBAQAAAAGUAQEAAAABlQEBAAAAAZYBAQAAAAGXAQEAzAEAIZgBAQAAAAGZAQEAAAABmgEBAAAAAQiQAQgAAAABkQEIAAAABJIBCAAAAASTAQgAAAABlAEIAAAAAZUBCAAAAAGWAQgAAAABlwEIAMoBACEIkAFAAAAAAZEBQAAAAASSAUAAAAAEkwFAAAAAAZQBQAAAAAGVAUAAAAABlgFAAAAAAZcBQADIAQAhA7EBAAADACCyAQAAAwAgswEAAAMAIAsEAADjAQAghgEAAOABADCHAQAAGAAQiAEAAOABADCJAQEA3AEAIYoBAQDcAQAhiwECAOEBACGMAQEA3AEAIY0BAQDcAQAhjgFAAN4BACGPAUAA4gEAIQiQAQIAAAABkQECAAAABJIBAgAAAASTAQIAAAABlAECAAAAAZUBAgAAAAGWAQIAAAABlwECAMcBACEIkAFAAAAAAZEBQAAAAAWSAUAAAAAFkwFAAAAAAZQBQAAAAAGVAUAAAAABlgFAAAAAAZcBQADFAQAhFgMAAPABACAFAADxAQAgCQAA8gEAIAoAAPMBACALAAD0AQAgDAAA6gEAIIYBAADuAQAwhwEAAAMAEIgBAADuAQAwiQEBANwBACGOAUAA3gEAIaEBAQDcAQAhogEBANwBACGjAQIA4QEAIaQBAQDcAQAhpQEBANwBACGmAQgA3QEAIagBAADvAagBIqkBQADeAQAhqgECAOEBACG3AQAAAwAguAEAAAMAIAsEAADjAQAghgEAAOQBADCHAQAAFAAQiAEAAOQBADCJAQEA3AEAIYoBAQDcAQAhiwECAOEBACGbAQEA3AEAIZwBAQDcAQAhnQEIAN0BACGeAQEA3AEAIQKKAQEAAAABnwEBAAAAAQcEAADjAQAgBgAA5wEAIIYBAADmAQAwhwEAAA8AEIgBAADmAQAwigEBANwBACGfAQEA3AEAIQwEAADjAQAgBwAA6gEAIIYBAADoAQAwhwEAAAsAEIgBAADoAQAwiQEBANwBACGKAQEA3AEAIYsBAgDhAQAhjQEBANwBACGgASAA6QEAIbcBAAALACC4AQAACwAgCgQAAOMBACAHAADqAQAghgEAAOgBADCHAQAACwAQiAEAAOgBADCJAQEA3AEAIYoBAQDcAQAhiwECAOEBACGNAQEA3AEAIaABIADpAQAhApABIAAAAAGXASAA1AEAIQOxAQAADwAgsgEAAA8AILMBAAAPACAJBAAA4wEAIIYBAADrAQAwhwEAAAcAEIgBAADrAQAwiQEBANwBACGKAQEA3AEAIYsBAgDhAQAhjQEBANwBACGgASAA6QEAIQKhAQEAAAABogEBAAAAAQKhAQEAAAABowECAAAAARQDAADwAQAgBQAA8QEAIAkAAPIBACAKAADzAQAgCwAA9AEAIAwAAOoBACCGAQAA7gEAMIcBAAADABCIAQAA7gEAMIkBAQDcAQAhjgFAAN4BACGhAQEA3AEAIaIBAQDcAQAhowECAOEBACGkAQEA3AEAIaUBAQDcAQAhpgEIAN0BACGoAQAA7wGoASKpAUAA3gEAIaoBAgDhAQAhBJABAAAAqAECkQEAAACoAQiSAQAAAKgBCJcBAADZAagBIhENAADfAQAghgEAANsBADCHAQAAJAAQiAEAANsBADCJAQEA3AEAIY4BQADeAQAhngEBANwBACGkAQEA3AEAIakBQADeAQAhqwEBANwBACGsAQEA3AEAIa0BAQDcAQAhrgEIAN0BACGvAQgA3QEAIbABCADdAQAhtwEAACQAILgBAAAkACADsQEAAAcAILIBAAAHACCzAQAABwAgA7EBAAALACCyAQAACwAgswEAAAsAIAOxAQAAFAAgsgEAABQAILMBAAAUACADsQEAABgAILIBAAAYACCzAQAAGAAgAAAAAAAAAbwBAQAAAAEFvAECAAAAAcIBAgAAAAHDAQIAAAABxAECAAAAAcUBAgAAAAEBvAFAAAAAAQG8AUAAAAABBRoAALkDACAbAAC8AwAguQEAALoDACC6AQAAuwMAIL8BAAAFACADGgAAuQMAILkBAAC6AwAgvwEAAAUAIAAAAAAABbwBCAAAAAHCAQgAAAABwwEIAAAAAcQBCAAAAAHFAQgAAAABBRoAALQDACAbAAC3AwAguQEAALUDACC6AQAAtgMAIL8BAAAFACADGgAAtAMAILkBAAC1AwAgvwEAAAUAIAAAAAUaAACsAwAgGwAAsgMAILkBAACtAwAgugEAALEDACC_AQAADQAgBRoAAKoDACAbAACvAwAguQEAAKsDACC6AQAArgMAIL8BAAAFACADGgAArAMAILkBAACtAwAgvwEAAA0AIAMaAACqAwAguQEAAKsDACC_AQAABQAgAAAAAAABvAEgAAAAAQUaAACkAwAgGwAAqAMAILkBAAClAwAgugEAAKcDACC_AQAABQAgCxoAAJgCADAbAACdAgAwuQEAAJkCADC6AQAAmgIAMLsBAACbAgAgvAEAAJwCADC9AQAAnAIAML4BAACcAgAwvwEAAJwCADDAAQAAngIAMMEBAACfAgAwAgQAAI8CACCKAQEAAAABAgAAABEAIBoAAKMCACADAAAAEQAgGgAAowIAIBsAAKICACABEwAApgMAMAgEAADjAQAgBgAA5wEAIIYBAADmAQAwhwEAAA8AEIgBAADmAQAwigEBANwBACGfAQEA3AEAIbQBAADlAQAgAgAAABEAIBMAAKICACACAAAAoAIAIBMAAKECACAFhgEAAJ8CADCHAQAAoAIAEIgBAACfAgAwigEBANwBACGfAQEA3AEAIQWGAQAAnwIAMIcBAACgAgAQiAEAAJ8CADCKAQEA3AEAIZ8BAQDcAQAhAYoBAQD7AQAhAgQAAI0CACCKAQEA-wEAIQIEAACPAgAgigEBAAAAAQMaAACkAwAguQEAAKUDACC_AQAABQAgBBoAAJgCADC5AQAAmQIAMLsBAACbAgAgvwEAAJwCADAAAAAAAAUaAACfAwAgGwAAogMAILkBAACgAwAgugEAAKEDACC_AQAABQAgAxoAAJ8DACC5AQAAoAMAIL8BAAAFACAAAAAAAAG8AQAAAKgBAgUaAACVAwAgGwAAnQMAILkBAACWAwAgugEAAJwDACC_AQAAAQAgCxoAAOYCADAbAADrAgAwuQEAAOcCADC6AQAA6AIAMLsBAADpAgAgvAEAAOoCADC9AQAA6gIAML4BAADqAgAwvwEAAOoCADDAAQAA7AIAMMEBAADtAgAwCxoAANoCADAbAADfAgAwuQEAANsCADC6AQAA3AIAMLsBAADdAgAgvAEAAN4CADC9AQAA3gIAML4BAADeAgAwvwEAAN4CADDAAQAA4AIAMMEBAADhAgAwCxoAAM4CADAbAADTAgAwuQEAAM8CADC6AQAA0AIAMLsBAADRAgAgvAEAANICADC9AQAA0gIAML4BAADSAgAwvwEAANICADDAAQAA1AIAMMEBAADVAgAwCxoAAMICADAbAADHAgAwuQEAAMMCADC6AQAAxAIAMLsBAADFAgAgvAEAAMYCADC9AQAAxgIAML4BAADGAgAwvwEAAMYCADDAAQAAyAIAMMEBAADJAgAwCxoAALkCADAbAAC9AgAwuQEAALoCADC6AQAAuwIAMLsBAAC8AgAgvAEAAJwCADC9AQAAnAIAML4BAACcAgAwvwEAAJwCADDAAQAAvgIAMMEBAACfAgAwAgYAAI4CACCfAQEAAAABAgAAABEAIBoAAMECACADAAAAEQAgGgAAwQIAIBsAAMACACABEwAAmwMAMAIAAAARACATAADAAgAgAgAAAKACACATAAC_AgAgAZ8BAQD7AQAhAgYAAIwCACCfAQEA-wEAIQIGAACOAgAgnwEBAAAAAQaJAQEAAAABiwECAAAAAYwBAQAAAAGNAQEAAAABjgFAAAAAAY8BQAAAAAECAAAAGgAgGgAAzQIAIAMAAAAaACAaAADNAgAgGwAAzAIAIAETAACaAwAwCwQAAOMBACCGAQAA4AEAMIcBAAAYABCIAQAA4AEAMIkBAQAAAAGKAQEA3AEAIYsBAgDhAQAhjAEBANwBACGNAQEA3AEAIY4BQADeAQAhjwFAAOIBACECAAAAGgAgEwAAzAIAIAIAAADKAgAgEwAAywIAIAqGAQAAyQIAMIcBAADKAgAQiAEAAMkCADCJAQEA3AEAIYoBAQDcAQAhiwECAOEBACGMAQEA3AEAIY0BAQDcAQAhjgFAAN4BACGPAUAA4gEAIQqGAQAAyQIAMIcBAADKAgAQiAEAAMkCADCJAQEA3AEAIYoBAQDcAQAhiwECAOEBACGMAQEA3AEAIY0BAQDcAQAhjgFAAN4BACGPAUAA4gEAIQaJAQEA-wEAIYsBAgD8AQAhjAEBAPsBACGNAQEA-wEAIY4BQAD9AQAhjwFAAP4BACEGiQEBAPsBACGLAQIA_AEAIYwBAQD7AQAhjQEBAPsBACGOAUAA_QEAIY8BQAD-AQAhBokBAQAAAAGLAQIAAAABjAEBAAAAAY0BAQAAAAGOAUAAAAABjwFAAAAAAQaJAQEAAAABiwECAAAAAZsBAQAAAAGcAQEAAAABnQEIAAAAAZ4BAQAAAAECAAAAFgAgGgAA2QIAIAMAAAAWACAaAADZAgAgGwAA2AIAIAETAACZAwAwCwQAAOMBACCGAQAA5AEAMIcBAAAUABCIAQAA5AEAMIkBAQAAAAGKAQEA3AEAIYsBAgDhAQAhmwEBANwBACGcAQEA3AEAIZ0BCADdAQAhngEBANwBACECAAAAFgAgEwAA2AIAIAIAAADWAgAgEwAA1wIAIAqGAQAA1QIAMIcBAADWAgAQiAEAANUCADCJAQEA3AEAIYoBAQDcAQAhiwECAOEBACGbAQEA3AEAIZwBAQDcAQAhnQEIAN0BACGeAQEA3AEAIQqGAQAA1QIAMIcBAADWAgAQiAEAANUCADCJAQEA3AEAIYoBAQDcAQAhiwECAOEBACGbAQEA3AEAIZwBAQDcAQAhnQEIAN0BACGeAQEA3AEAIQaJAQEA-wEAIYsBAgD8AQAhmwEBAPsBACGcAQEA-wEAIZ0BCACGAgAhngEBAPsBACEGiQEBAPsBACGLAQIA_AEAIZsBAQD7AQAhnAEBAPsBACGdAQgAhgIAIZ4BAQD7AQAhBokBAQAAAAGLAQIAAAABmwEBAAAAAZwBAQAAAAGdAQgAAAABngEBAAAAAQUHAAClAgAgiQEBAAAAAYsBAgAAAAGNAQEAAAABoAEgAAAAAQIAAAANACAaAADlAgAgAwAAAA0AIBoAAOUCACAbAADkAgAgARMAAJgDADAKBAAA4wEAIAcAAOoBACCGAQAA6AEAMIcBAAALABCIAQAA6AEAMIkBAQAAAAGKAQEA3AEAIYsBAgDhAQAhjQEBANwBACGgASAA6QEAIQIAAAANACATAADkAgAgAgAAAOICACATAADjAgAgCIYBAADhAgAwhwEAAOICABCIAQAA4QIAMIkBAQDcAQAhigEBANwBACGLAQIA4QEAIY0BAQDcAQAhoAEgAOkBACEIhgEAAOECADCHAQAA4gIAEIgBAADhAgAwiQEBANwBACGKAQEA3AEAIYsBAgDhAQAhjQEBANwBACGgASAA6QEAIQSJAQEA-wEAIYsBAgD8AQAhjQEBAPsBACGgASAAlQIAIQUHAACXAgAgiQEBAPsBACGLAQIA_AEAIY0BAQD7AQAhoAEgAJUCACEFBwAApQIAIIkBAQAAAAGLAQIAAAABjQEBAAAAAaABIAAAAAEEiQEBAAAAAYsBAgAAAAGNAQEAAAABoAEgAAAAAQIAAAAJACAaAADxAgAgAwAAAAkAIBoAAPECACAbAADwAgAgARMAAJcDADAJBAAA4wEAIIYBAADrAQAwhwEAAAcAEIgBAADrAQAwiQEBAAAAAYoBAQDcAQAhiwECAOEBACGNAQEA3AEAIaABIADpAQAhAgAAAAkAIBMAAPACACACAAAA7gIAIBMAAO8CACAIhgEAAO0CADCHAQAA7gIAEIgBAADtAgAwiQEBANwBACGKAQEA3AEAIYsBAgDhAQAhjQEBANwBACGgASAA6QEAIQiGAQAA7QIAMIcBAADuAgAQiAEAAO0CADCJAQEA3AEAIYoBAQDcAQAhiwECAOEBACGNAQEA3AEAIaABIADpAQAhBIkBAQD7AQAhiwECAPwBACGNAQEA-wEAIaABIACVAgAhBIkBAQD7AQAhiwECAPwBACGNAQEA-wEAIaABIACVAgAhBIkBAQAAAAGLAQIAAAABjQEBAAAAAaABIAAAAAEDGgAAlQMAILkBAACWAwAgvwEAAAEAIAQaAADmAgAwuQEAAOcCADC7AQAA6QIAIL8BAADqAgAwBBoAANoCADC5AQAA2wIAMLsBAADdAgAgvwEAAN4CADAEGgAAzgIAMLkBAADPAgAwuwEAANECACC_AQAA0gIAMAQaAADCAgAwuQEAAMMCADC7AQAAxQIAIL8BAADGAgAwBBoAALkCADC5AQAAugIAMLsBAAC8AgAgvwEAAJwCADAAAAAAAAsaAAD-AgAwGwAAgwMAMLkBAAD_AgAwugEAAIADADC7AQAAgQMAILwBAACCAwAwvQEAAIIDADC-AQAAggMAML8BAACCAwAwwAEAAIQDADDBAQAAhQMAMA8FAADzAgAgCQAA9AIAIAoAAPUCACALAAD2AgAgDAAA9wIAIIkBAQAAAAGOAUAAAAABogEBAAAAAaMBAgAAAAGkAQEAAAABpQEBAAAAAaYBCAAAAAGoAQAAAKgBAqkBQAAAAAGqAQIAAAABAgAAAAUAIBoAAIkDACADAAAABQAgGgAAiQMAIBsAAIgDACABEwAAlAMAMBYDAADwAQAgBQAA8QEAIAkAAPIBACAKAADzAQAgCwAA9AEAIAwAAOoBACCGAQAA7gEAMIcBAAADABCIAQAA7gEAMIkBAQAAAAGOAUAA3gEAIaEBAQDcAQAhogEBANwBACGjAQIA4QEAIaQBAQDcAQAhpQEBANwBACGmAQgA3QEAIagBAADvAagBIqkBQADeAQAhqgECAOEBACG1AQAA7AEAILYBAADtAQAgAgAAAAUAIBMAAIgDACACAAAAhgMAIBMAAIcDACAOhgEAAIUDADCHAQAAhgMAEIgBAACFAwAwiQEBANwBACGOAUAA3gEAIaEBAQDcAQAhogEBANwBACGjAQIA4QEAIaQBAQDcAQAhpQEBANwBACGmAQgA3QEAIagBAADvAagBIqkBQADeAQAhqgECAOEBACEOhgEAAIUDADCHAQAAhgMAEIgBAACFAwAwiQEBANwBACGOAUAA3gEAIaEBAQDcAQAhogEBANwBACGjAQIA4QEAIaQBAQDcAQAhpQEBANwBACGmAQgA3QEAIagBAADvAagBIqkBQADeAQAhqgECAOEBACEKiQEBAPsBACGOAUAA_QEAIaIBAQD7AQAhowECAPwBACGkAQEA-wEAIaUBAQD7AQAhpgEIAIYCACGoAQAAsgKoASKpAUAA_QEAIaoBAgD8AQAhDwUAALQCACAJAAC1AgAgCgAAtgIAIAsAALcCACAMAAC4AgAgiQEBAPsBACGOAUAA_QEAIaIBAQD7AQAhowECAPwBACGkAQEA-wEAIaUBAQD7AQAhpgEIAIYCACGoAQAAsgKoASKpAUAA_QEAIaoBAgD8AQAhDwUAAPMCACAJAAD0AgAgCgAA9QIAIAsAAPYCACAMAAD3AgAgiQEBAAAAAY4BQAAAAAGiAQEAAAABowECAAAAAaQBAQAAAAGlAQEAAAABpgEIAAAAAagBAAAAqAECqQFAAAAAAaoBAgAAAAEEGgAA_gIAMLkBAAD_AgAwuwEAAIEDACC_AQAAggMAMAAGAwAAjwMAIAUAAJADACAJAACRAwAgCgAAkgMAIAsAAJMDACAMAACOAwAgAgQAAIwDACAHAACOAwAgAAENAACLAwAgAAAAAAqJAQEAAAABjgFAAAAAAaIBAQAAAAGjAQIAAAABpAEBAAAAAaUBAQAAAAGmAQgAAAABqAEAAACoAQKpAUAAAAABqgECAAAAAQuJAQEAAAABjgFAAAAAAZ4BAQAAAAGkAQEAAAABqQFAAAAAAasBAQAAAAGsAQEAAAABrQEBAAAAAa4BCAAAAAGvAQgAAAABsAEIAAAAAQIAAAABACAaAACVAwAgBIkBAQAAAAGLAQIAAAABjQEBAAAAAaABIAAAAAEEiQEBAAAAAYsBAgAAAAGNAQEAAAABoAEgAAAAAQaJAQEAAAABiwECAAAAAZsBAQAAAAGcAQEAAAABnQEIAAAAAZ4BAQAAAAEGiQEBAAAAAYsBAgAAAAGMAQEAAAABjQEBAAAAAY4BQAAAAAGPAUAAAAABAZ8BAQAAAAEDAAAAJAAgGgAAlQMAIBsAAJ4DACANAAAAJAAgEwAAngMAIIkBAQD7AQAhjgFAAP0BACGeAQEA-wEAIaQBAQD7AQAhqQFAAP0BACGrAQEA-wEAIawBAQD7AQAhrQEBAPsBACGuAQgAhgIAIa8BCACGAgAhsAEIAIYCACELiQEBAPsBACGOAUAA_QEAIZ4BAQD7AQAhpAEBAPsBACGpAUAA_QEAIasBAQD7AQAhrAEBAPsBACGtAQEA-wEAIa4BCACGAgAhrwEIAIYCACGwAQgAhgIAIRADAADyAgAgCQAA9AIAIAoAAPUCACALAAD2AgAgDAAA9wIAIIkBAQAAAAGOAUAAAAABoQEBAAAAAaIBAQAAAAGjAQIAAAABpAEBAAAAAaUBAQAAAAGmAQgAAAABqAEAAACoAQKpAUAAAAABqgECAAAAAQIAAAAFACAaAACfAwAgAwAAAAMAIBoAAJ8DACAbAACjAwAgEgAAAAMAIAMAALMCACAJAAC1AgAgCgAAtgIAIAsAALcCACAMAAC4AgAgEwAAowMAIIkBAQD7AQAhjgFAAP0BACGhAQEA-wEAIaIBAQD7AQAhowECAPwBACGkAQEA-wEAIaUBAQD7AQAhpgEIAIYCACGoAQAAsgKoASKpAUAA_QEAIaoBAgD8AQAhEAMAALMCACAJAAC1AgAgCgAAtgIAIAsAALcCACAMAAC4AgAgiQEBAPsBACGOAUAA_QEAIaEBAQD7AQAhogEBAPsBACGjAQIA_AEAIaQBAQD7AQAhpQEBAPsBACGmAQgAhgIAIagBAACyAqgBIqkBQAD9AQAhqgECAPwBACEQAwAA8gIAIAUAAPMCACAKAAD1AgAgCwAA9gIAIAwAAPcCACCJAQEAAAABjgFAAAAAAaEBAQAAAAGiAQEAAAABowECAAAAAaQBAQAAAAGlAQEAAAABpgEIAAAAAagBAAAAqAECqQFAAAAAAaoBAgAAAAECAAAABQAgGgAApAMAIAGKAQEAAAABAwAAAAMAIBoAAKQDACAbAACpAwAgEgAAAAMAIAMAALMCACAFAAC0AgAgCgAAtgIAIAsAALcCACAMAAC4AgAgEwAAqQMAIIkBAQD7AQAhjgFAAP0BACGhAQEA-wEAIaIBAQD7AQAhowECAPwBACGkAQEA-wEAIaUBAQD7AQAhpgEIAIYCACGoAQAAsgKoASKpAUAA_QEAIaoBAgD8AQAhEAMAALMCACAFAAC0AgAgCgAAtgIAIAsAALcCACAMAAC4AgAgiQEBAPsBACGOAUAA_QEAIaEBAQD7AQAhogEBAPsBACGjAQIA_AEAIaQBAQD7AQAhpQEBAPsBACGmAQgAhgIAIagBAACyAqgBIqkBQAD9AQAhqgECAPwBACEQAwAA8gIAIAUAAPMCACAJAAD0AgAgCgAA9QIAIAsAAPYCACCJAQEAAAABjgFAAAAAAaEBAQAAAAGiAQEAAAABowECAAAAAaQBAQAAAAGlAQEAAAABpgEIAAAAAagBAAAAqAECqQFAAAAAAaoBAgAAAAECAAAABQAgGgAAqgMAIAYEAACkAgAgiQEBAAAAAYoBAQAAAAGLAQIAAAABjQEBAAAAAaABIAAAAAECAAAADQAgGgAArAMAIAMAAAADACAaAACqAwAgGwAAsAMAIBIAAAADACADAACzAgAgBQAAtAIAIAkAALUCACAKAAC2AgAgCwAAtwIAIBMAALADACCJAQEA-wEAIY4BQAD9AQAhoQEBAPsBACGiAQEA-wEAIaMBAgD8AQAhpAEBAPsBACGlAQEA-wEAIaYBCACGAgAhqAEAALICqAEiqQFAAP0BACGqAQIA_AEAIRADAACzAgAgBQAAtAIAIAkAALUCACAKAAC2AgAgCwAAtwIAIIkBAQD7AQAhjgFAAP0BACGhAQEA-wEAIaIBAQD7AQAhowECAPwBACGkAQEA-wEAIaUBAQD7AQAhpgEIAIYCACGoAQAAsgKoASKpAUAA_QEAIaoBAgD8AQAhAwAAAAsAIBoAAKwDACAbAACzAwAgCAAAAAsAIAQAAJYCACATAACzAwAgiQEBAPsBACGKAQEA-wEAIYsBAgD8AQAhjQEBAPsBACGgASAAlQIAIQYEAACWAgAgiQEBAPsBACGKAQEA-wEAIYsBAgD8AQAhjQEBAPsBACGgASAAlQIAIRADAADyAgAgBQAA8wIAIAkAAPQCACALAAD2AgAgDAAA9wIAIIkBAQAAAAGOAUAAAAABoQEBAAAAAaIBAQAAAAGjAQIAAAABpAEBAAAAAaUBAQAAAAGmAQgAAAABqAEAAACoAQKpAUAAAAABqgECAAAAAQIAAAAFACAaAAC0AwAgAwAAAAMAIBoAALQDACAbAAC4AwAgEgAAAAMAIAMAALMCACAFAAC0AgAgCQAAtQIAIAsAALcCACAMAAC4AgAgEwAAuAMAIIkBAQD7AQAhjgFAAP0BACGhAQEA-wEAIaIBAQD7AQAhowECAPwBACGkAQEA-wEAIaUBAQD7AQAhpgEIAIYCACGoAQAAsgKoASKpAUAA_QEAIaoBAgD8AQAhEAMAALMCACAFAAC0AgAgCQAAtQIAIAsAALcCACAMAAC4AgAgiQEBAPsBACGOAUAA_QEAIaEBAQD7AQAhogEBAPsBACGjAQIA_AEAIaQBAQD7AQAhpQEBAPsBACGmAQgAhgIAIagBAACyAqgBIqkBQAD9AQAhqgECAPwBACEQAwAA8gIAIAUAAPMCACAJAAD0AgAgCgAA9QIAIAwAAPcCACCJAQEAAAABjgFAAAAAAaEBAQAAAAGiAQEAAAABowECAAAAAaQBAQAAAAGlAQEAAAABpgEIAAAAAagBAAAAqAECqQFAAAAAAaoBAgAAAAECAAAABQAgGgAAuQMAIAMAAAADACAaAAC5AwAgGwAAvQMAIBIAAAADACADAACzAgAgBQAAtAIAIAkAALUCACAKAAC2AgAgDAAAuAIAIBMAAL0DACCJAQEA-wEAIY4BQAD9AQAhoQEBAPsBACGiAQEA-wEAIaMBAgD8AQAhpAEBAPsBACGlAQEA-wEAIaYBCACGAgAhqAEAALICqAEiqQFAAP0BACGqAQIA_AEAIRADAACzAgAgBQAAtAIAIAkAALUCACAKAAC2AgAgDAAAuAIAIIkBAQD7AQAhjgFAAP0BACGhAQEA-wEAIaIBAQD7AQAhowECAPwBACGkAQEA-wEAIaUBAQD7AQAhpgEIAIYCACGoAQAAsgKoASKpAUAA_QEAIaoBAgD8AQAhAggACg0GAgcDAAEFCgMIAAkJDgQKFwcLGwgMHAUBBAACAwQAAgcSBQgABgIEAAIGAAQBBxMAAQQAAgEEAAIFBR0ACR4ACh8ACyAADCEAAQ0iAAAAAAUIAA8gABAhABEiABIjABMAAAAAAAUIAA8gABAhABEiABIjABMBAwABAQMAAQUIABggABkhABoiABsjABwAAAAAAAUIABggABkhABoiABsjABwBBAACAQQAAgUIACEgACIhACMiACQjACUAAAAAAAUIACEgACIhACMiACQjACUBBAACAQQAAgUIACogACshACwiAC0jAC4AAAAAAAUIACogACshACwiAC0jAC4CBAACBgAEAgQAAgYABAMIADMiADQjADUAAAADCAAzIgA0IwA1AQQAAgEEAAIFCAA6IAA7IQA8IgA9IwA-AAAAAAAFCAA6IAA7IQA8IgA9IwA-AQQAAgEEAAIFCABDIABEIQBFIgBGIwBHAAAAAAAFCABDIABEIQBFIgBGIwBHDgIBDyMBECYBEScBEigBFCoBFSwLFi0MFy8BGDELGTINHDMBHTQBHjULJDgOJTkUJjoCJzsCKDwCKT0CKj4CK0ACLEILLUMVLkUCL0cLMEgWMUkCMkoCM0sLNE4XNU8dNlADN1EDOFIDOVMDOlQDO1YDPFgLPVkePlsDP10LQF4fQV8DQmADQ2ELRGQgRWUmRmYER2cESGgESWkESmoES2wETG4LTW8nTnEET3MLUHQoUXUEUnYEU3cLVHopVXsvVnwFV30FWH4FWX8FWoABBVuCAQVchAELXYUBMF6HAQVfiQELYIoBMWGLAQVijAEFY40BC2SQATJlkQE2ZpIBB2eTAQdolAEHaZUBB2qWAQdrmAEHbJoBC22bATdunQEHb58BC3CgAThxoQEHcqIBB3OjAQt0pgE5dacBP3aoAQh3qQEIeKoBCHmrAQh6rAEIe64BCHywAQt9sQFAfrMBCH-1AQuAAbYBQYEBtwEIggG4AQiDAbkBC4QBvAFChQG9AUg"
+      strings: JSON.parse('["where","orderBy","cursor","plan","node","criteria","provider","requirements","resources","messages","provides","_count","nodes","Plan.findUnique","Plan.findUniqueOrThrow","Plan.findFirst","Plan.findFirstOrThrow","Plan.findMany","data","Plan.createOne","Plan.createMany","Plan.createManyAndReturn","Plan.updateOne","Plan.updateMany","Plan.updateManyAndReturn","create","update","Plan.upsertOne","Plan.deleteOne","Plan.deleteMany","having","_avg","_sum","_min","_max","Plan.groupBy","Plan.aggregate","Node.findUnique","Node.findUniqueOrThrow","Node.findFirst","Node.findFirstOrThrow","Node.findMany","Node.createOne","Node.createMany","Node.createManyAndReturn","Node.updateOne","Node.updateMany","Node.updateManyAndReturn","Node.upsertOne","Node.deleteOne","Node.deleteMany","Node.groupBy","Node.aggregate","Criterion.findUnique","Criterion.findUniqueOrThrow","Criterion.findFirst","Criterion.findFirstOrThrow","Criterion.findMany","Criterion.createOne","Criterion.createMany","Criterion.createManyAndReturn","Criterion.updateOne","Criterion.updateMany","Criterion.updateManyAndReturn","Criterion.upsertOne","Criterion.deleteOne","Criterion.deleteMany","Criterion.groupBy","Criterion.aggregate","Requirement.findUnique","Requirement.findUniqueOrThrow","Requirement.findFirst","Requirement.findFirstOrThrow","Requirement.findMany","Requirement.createOne","Requirement.createMany","Requirement.createManyAndReturn","Requirement.updateOne","Requirement.updateMany","Requirement.updateManyAndReturn","Requirement.upsertOne","Requirement.deleteOne","Requirement.deleteMany","Requirement.groupBy","Requirement.aggregate","ResourceNeed.findUnique","ResourceNeed.findUniqueOrThrow","ResourceNeed.findFirst","ResourceNeed.findFirstOrThrow","ResourceNeed.findMany","ResourceNeed.createOne","ResourceNeed.createMany","ResourceNeed.createManyAndReturn","ResourceNeed.updateOne","ResourceNeed.updateMany","ResourceNeed.updateManyAndReturn","ResourceNeed.upsertOne","ResourceNeed.deleteOne","ResourceNeed.deleteMany","ResourceNeed.groupBy","ResourceNeed.aggregate","Message.findUnique","Message.findUniqueOrThrow","Message.findFirst","Message.findFirstOrThrow","Message.findMany","Message.createOne","Message.createMany","Message.createManyAndReturn","Message.updateOne","Message.updateMany","Message.updateManyAndReturn","Message.upsertOne","Message.deleteOne","Message.deleteMany","Message.groupBy","Message.aggregate","AND","OR","NOT","id","nodeId","handle","position","author","text","createdAt","editedAt","equals","in","notIn","lt","lte","gt","gte","not","contains","startsWith","endsWith","slug","kind","name","quantity","unit","providerId","met","planId","ref","seq","title","description","level","NodeStatus","status","updatedAt","size","target","metric","presentValue","targetValue","gapPercent","every","some","none","nodeId_handle","nodeId_slug","planId_ref","planId_seq","is","isNot","connectOrCreate","upsert","createMany","set","disconnect","delete","connect","updateMany","deleteMany","increment","decrement","multiply","divide"]'),
+      graph: "hgM_YA8MAADDAQAgdQAAvwEAMHYAAB8AEHcAAL8BADB4AQAAAAF-QADCAQAhiwEBAAAAAY8BAQDAAQAhlQEBAMABACGaAUAAwgEAIZwBAQDAAQAhnQEBAMABACGeAQgAwQEAIZ8BCADBAQAhoAEIAMEBACEBAAAAAQAgFAMAANQBACAFAADVAQAgBwAA1gEAIAgAANcBACAJAADYAQAgCgAA1gEAIHUAANIBADB2AAADABB3AADSAQAweAEAwAEAIX5AAMIBACGSAQEAwAEAIZMBAQDAAQAhlAECAMYBACGVAQEAwAEAIZYBAQDAAQAhlwEIAMEBACGZAQAA0wGZASKaAUAAwgEAIZsBAgDGAQAhBgMAAN4CACAFAADfAgAgBwAA4AIAIAgAAOECACAJAADiAgAgCgAA4AIAIBYDAADUAQAgBQAA1QEAIAcAANYBACAIAADXAQAgCQAA2AEAIAoAANYBACB1AADSAQAwdgAAAwAQdwAA0gEAMHgBAAAAAX5AAMIBACGSAQEAwAEAIZMBAQDAAQAhlAECAMYBACGVAQEAwAEAIZYBAQDAAQAhlwEIAMEBACGZAQAA0wGZASKaAUAAwgEAIZsBAgDGAQAhpgEAANABACCnAQAA0QEAIAMAAAADACABAAAEADACAAAFACAKBAAAyAEAIHUAAM4BADB2AAAHABB3AADOAQAweAEAwAEAIXkBAMABACF7AgDGAQAhfQEAwAEAIYsBAQDAAQAhkQEgAM8BACEBBAAA3QIAIAsEAADIAQAgdQAAzgEAMHYAAAcAEHcAAM4BADB4AQAAAAF5AQDAAQAhewIAxgEAIX0BAMABACGLAQEAwAEAIZEBIADPAQAhpQEAAM0BACADAAAABwAgAQAACAAwAgAACQAgCwQAAMgBACAGAADIAQAgdQAAzAEAMHYAAAsAEHcAAMwBADB4AQDAAQAheQEAwAEAIXsCAMYBACF9AQDAAQAhiwEBAMABACGQAQEAwAEAIQIEAADdAgAgBgAA3QIAIAwEAADIAQAgBgAAyAEAIHUAAMwBADB2AAALABB3AADMAQAweAEAAAABeQEAwAEAIXsCAMYBACF9AQDAAQAhiwEBAMABACGQAQEAwAEAIaUBAADLAQAgAwAAAAsAIAEAAAwAMAIAAA0AIAwEAADIAQAgdQAAygEAMHYAAA8AEHcAAMoBADB4AQDAAQAheQEAwAEAIXsCAMYBACGLAQEAwAEAIYwBAQDAAQAhjQEBAMABACGOAQgAwQEAIY8BAQDAAQAhAQQAAN0CACANBAAAyAEAIHUAAMoBADB2AAAPABB3AADKAQAweAEAAAABeQEAwAEAIXsCAMYBACGLAQEAwAEAIYwBAQDAAQAhjQEBAMABACGOAQgAwQEAIY8BAQDAAQAhpQEAAMkBACADAAAADwAgAQAAEAAwAgAAEQAgDAQAAMgBACB1AADFAQAwdgAAEwAQdwAAxQEAMHgBAMABACF5AQDAAQAhegEAwAEAIXsCAMYBACF8AQDAAQAhfQEAwAEAIX5AAMIBACF_QADHAQAhAgQAAN0CACB_AADZAQAgDQQAAMgBACB1AADFAQAwdgAAEwAQdwAAxQEAMHgBAAAAAXkBAMABACF6AQDAAQAhewIAxgEAIXwBAMABACF9AQDAAQAhfkAAwgEAIX9AAMcBACGkAQAAxAEAIAMAAAATACABAAAUADACAAAVACADAAAACwAgAQAADAAwAgAADQAgAQAAAAcAIAEAAAALACABAAAADwAgAQAAABMAIAEAAAALACABAAAAAwAgAQAAAAEAIA8MAADDAQAgdQAAvwEAMHYAAB8AEHcAAL8BADB4AQDAAQAhfkAAwgEAIYsBAQDAAQAhjwEBAMABACGVAQEAwAEAIZoBQADCAQAhnAEBAMABACGdAQEAwAEAIZ4BCADBAQAhnwEIAMEBACGgAQgAwQEAIQEMAADcAgAgAwAAAB8AIAEAACAAMAIAAAEAIAMAAAAfACABAAAgADACAAABACADAAAAHwAgAQAAIAAwAgAAAQAgDAwAANsCACB4AQAAAAF-QAAAAAGLAQEAAAABjwEBAAAAAZUBAQAAAAGaAUAAAAABnAEBAAAAAZ0BAQAAAAGeAQgAAAABnwEIAAAAAaABCAAAAAEBEgAAJAAgC3gBAAAAAX5AAAAAAYsBAQAAAAGPAQEAAAABlQEBAAAAAZoBQAAAAAGcAQEAAAABnQEBAAAAAZ4BCAAAAAGfAQgAAAABoAEIAAAAAQESAAAmADABEgAAJgAwDAwAAM4CACB4AQDfAQAhfkAA4QEAIYsBAQDfAQAhjwEBAN8BACGVAQEA3wEAIZoBQADhAQAhnAEBAN8BACGdAQEA3wEAIZ4BCADqAQAhnwEIAOoBACGgAQgA6gEAIQIAAAABACASAAApACALeAEA3wEAIX5AAOEBACGLAQEA3wEAIY8BAQDfAQAhlQEBAN8BACGaAUAA4QEAIZwBAQDfAQAhnQEBAN8BACGeAQgA6gEAIZ8BCADqAQAhoAEIAOoBACECAAAAHwAgEgAAKwAgAgAAAB8AIBIAACsAIAMAAAABACAZAAAkACAaAAApACABAAAAAQAgAQAAAB8AIAULAADJAgAgHwAAygIAICAAAM0CACAhAADMAgAgIgAAywIAIA51AAC-AQAwdgAAMgAQdwAAvgEAMHgBAKQBACF-QACmAQAhiwEBAKQBACGPAQEApAEAIZUBAQCkAQAhmgFAAKYBACGcAQEApAEAIZ0BAQCkAQAhngEIALMBACGfAQgAswEAIaABCACzAQAhAwAAAB8AIAEAADEAMB4AADIAIAMAAAAfACABAAAgADACAAABACABAAAABQAgAQAAAAUAIAMAAAADACABAAAEADACAAAFACADAAAAAwAgAQAABAAwAgAABQAgAwAAAAMAIAEAAAQAMAIAAAUAIBEDAADDAgAgBQAAxAIAIAcAAMUCACAIAADGAgAgCQAAxwIAIAoAAMgCACB4AQAAAAF-QAAAAAGSAQEAAAABkwEBAAAAAZQBAgAAAAGVAQEAAAABlgEBAAAAAZcBCAAAAAGZAQAAAJkBApoBQAAAAAGbAQIAAAABARIAADoAIAt4AQAAAAF-QAAAAAGSAQEAAAABkwEBAAAAAZQBAgAAAAGVAQEAAAABlgEBAAAAAZcBCAAAAAGZAQAAAJkBApoBQAAAAAGbAQIAAAABARIAADwAMAESAAA8ADARAwAAhAIAIAUAAIUCACAHAACGAgAgCAAAhwIAIAkAAIgCACAKAACJAgAgeAEA3wEAIX5AAOEBACGSAQEA3wEAIZMBAQDfAQAhlAECAOABACGVAQEA3wEAIZYBAQDfAQAhlwEIAOoBACGZAQAAgwKZASKaAUAA4QEAIZsBAgDgAQAhAgAAAAUAIBIAAD8AIAt4AQDfAQAhfkAA4QEAIZIBAQDfAQAhkwEBAN8BACGUAQIA4AEAIZUBAQDfAQAhlgEBAN8BACGXAQgA6gEAIZkBAACDApkBIpoBQADhAQAhmwECAOABACECAAAAAwAgEgAAQQAgAgAAAAMAIBIAAEEAIAMAAAAFACAZAAA6ACAaAAA_ACABAAAABQAgAQAAAAMAIAULAAD-AQAgHwAA_wEAICAAAIICACAhAACBAgAgIgAAgAIAIA51AAC6AQAwdgAASAAQdwAAugEAMHgBAKQBACF-QACmAQAhkgEBAKQBACGTAQEApAEAIZQBAgClAQAhlQEBAKQBACGWAQEApAEAIZcBCACzAQAhmQEAALsBmQEimgFAAKYBACGbAQIApQEAIQMAAAADACABAABHADAeAABIACADAAAAAwAgAQAABAAwAgAABQAgAQAAAAkAIAEAAAAJACADAAAABwAgAQAACAAwAgAACQAgAwAAAAcAIAEAAAgAMAIAAAkAIAMAAAAHACABAAAIADACAAAJACAHBAAA_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_QADiAQAhAgAAABUAIBIAAJcBACAIeAEA3wEAIXkBAN8BACF6AQDfAQAhewIA4AEAIXwBAN8BACF9AQDfAQAhfkAA4QEAIX9AAOIBACECAAAAEwAgEgAAmQEAIAIAAAATACASAACZAQAgAwAAABUAIBkAAJIBACAaAACXAQAgAQAAABUAIAEAAAATACAGCwAA2gEAIB8AANsBACAgAADeAQAgIQAA3QEAICIAANwBACB_AADZAQAgC3UAAKMBADB2AACgAQAQdwAAowEAMHgBAKQBACF5AQCkAQAhegEApAEAIXsCAKUBACF8AQCkAQAhfQEApAEAIX5AAKYBACF_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-AQAwdgAAMgAQdwAAvgEAMHgBAKQBACF-QACmAQAhiwEBAKQBACGPAQEApAEAIZUBAQCkAQAhmgFAAKYBACGcAQEApAEAIZ0BAQCkAQAhngEIALMBACGfAQgAswEAIaABCACzAQAhDwwAAMMBACB1AAC_AQAwdgAAHwAQdwAAvwEAMHgBAMABACF-QADCAQAhiwEBAMABACGPAQEAwAEAIZUBAQDAAQAhmgFAAMIBACGcAQEAwAEAIZ0BAQDAAQAhngEIAMEBACGfAQgAwQEAIaABCADBAQAhC4ABAQAAAAGBAQEAAAAEggEBAAAABIMBAQAAAAGEAQEAAAABhQEBAAAAAYYBAQAAAAGHAQEAsQEAIYgBAQAAAAGJAQEAAAABigEBAAAAAQiAAQgAAAABgQEIAAAABIIBCAAAAASDAQgAAAABhAEIAAAAAYUBCAAAAAGGAQgAAAABhwEIAK8BACEIgAFAAAAAAYEBQAAAAASCAUAAAAAEgwFAAAAAAYQBQAAAAAGFAUAAAAABhgFAAAAAAYcBQACtAQAhA6EBAAADACCiAQAAAwAgowEAAAMAIAJ5AQAAAAF6AQAAAAEMBAAAyAEAIHUAAMUBADB2AAATABB3AADFAQAweAEAwAEAIXkBAMABACF6AQDAAQAhewIAxgEAIXwBAMABACF9AQDAAQAhfkAAwgEAIX9AAMcBACEIgAECAAAAAYEBAgAAAASCAQIAAAAEgwECAAAAAYQBAgAAAAGFAQIAAAABhgECAAAAAYcBAgCsAQAhCIABQAAAAAGBAUAAAAAFggFAAAAABYMBQAAAAAGEAUAAAAABhQFAAAAAAYYBQAAAAAGHAUAAqgEAIRYDAADUAQAgBQAA1QEAIAcAANYBACAIAADXAQAgCQAA2AEAIAoAANYBACB1AADSAQAwdgAAAwAQdwAA0gEAMHgBAMABACF-QADCAQAhkgEBAMABACGTAQEAwAEAIZQBAgDGAQAhlQEBAMABACGWAQEAwAEAIZcBCADBAQAhmQEAANMBmQEimgFAAMIBACGbAQIAxgEAIagBAAADACCpAQAAAwAgAnkBAAAAAYsBAQAAAAEMBAAAyAEAIHUAAMoBADB2AAAPABB3AADKAQAweAEAwAEAIXkBAMABACF7AgDGAQAhiwEBAMABACGMAQEAwAEAIY0BAQDAAQAhjgEIAMEBACGPAQEAwAEAIQJ5AQAAAAGLAQEAAAABCwQAAMgBACAGAADIAQAgdQAAzAEAMHYAAAsAEHcAAMwBADB4AQDAAQAheQEAwAEAIXsCAMYBACF9AQDAAQAhiwEBAMABACGQAQEAwAEAIQJ5AQAAAAGLAQEAAAABCgQAAMgBACB1AADOAQAwdgAABwAQdwAAzgEAMHgBAMABACF5AQDAAQAhewIAxgEAIX0BAMABACGLAQEAwAEAIZEBIADPAQAhAoABIAAAAAGHASAAuQEAIQKSAQEAAAABkwEBAAAAAQKSAQEAAAABlAECAAAAARQDAADUAQAgBQAA1QEAIAcAANYBACAIAADXAQAgCQAA2AEAIAoAANYBACB1AADSAQAwdgAAAwAQdwAA0gEAMHgBAMABACF-QADCAQAhkgEBAMABACGTAQEAwAEAIZQBAgDGAQAhlQEBAMABACGWAQEAwAEAIZcBCADBAQAhmQEAANMBmQEimgFAAMIBACGbAQIAxgEAIQSAAQAAAJkBAoEBAAAAmQEIggEAAACZAQiHAQAAvQGZASIRDAAAwwEAIHUAAL8BADB2AAAfABB3AAC_AQAweAEAwAEAIX5AAMIBACGLAQEAwAEAIY8BAQDAAQAhlQEBAMABACGaAUAAwgEAIZwBAQDAAQAhnQEBAMABACGeAQgAwQEAIZ8BCADBAQAhoAEIAMEBACGoAQAAHwAgqQEAAB8AIAOhAQAABwAgogEAAAcAIKMBAAAHACADoQEAAAsAIKIBAAALACCjAQAACwAgA6EBAAAPACCiAQAADwAgowEAAA8AIAOhAQAAEwAgogEAABMAIKMBAAATACAAAAAAAAABrQEBAAAAAQWtAQIAAAABswECAAAAAbQBAgAAAAG1AQIAAAABtgECAAAAAQGtAUAAAAABAa0BQAAAAAEFGQAAggMAIBoAAIUDACCqAQAAgwMAIKsBAACEAwAgsAEAAAUAIAMZAACCAwAgqgEAAIMDACCwAQAABQAgAAAAAAAFrQEIAAAAAbMBCAAAAAG0AQgAAAABtQEIAAAAAbYBCAAAAAEFGQAA_QIAIBoAAIADACCqAQAA_gIAIKsBAAD_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_QADiAQAhB3gBAAAAAXoBAAAAAXsCAAAAAXwBAAAAAX0BAAAAAX5AAAAAAX9AAAAAAQd4AQAAAAF7AgAAAAGLAQEAAAABjAEBAAAAAY0BAQAAAAGOAQgAAAABjwEBAAAAAQIAAAARACAZAACtAgAgAwAAABEAIBkAAK0CACAaAACsAgAgARIAAOgCADANBAAAyAEAIHUAAMoBADB2AAAPABB3AADKAQAweAEAAAABeQEAwAEAIXsCAMYBACGLAQEAwAEAIYwBAQDAAQAhjQEBAMABACGOAQgAwQEAIY8BAQDAAQAhpQEAAMkBACACAAAAEQAgEgAArAIAIAIAAACqAgAgEgAAqwIAIAt1AACpAgAwdgAAqgIAEHcAAKkCADB4AQDAAQAheQEAwAEAIXsCAMYBACGLAQEAwAEAIYwBAQDAAQAhjQEBAMABACGOAQgAwQEAIY8BAQDAAQAhC3UAAKkCADB2AACqAgAQdwAAqQIAMHgBAMABACF5AQDAAQAhewIAxgEAIYsBAQDAAQAhjAEBAMABACGNAQEAwAEAIY4BCADBAQAhjwEBAMABACEHeAEA3wEAIXsCAOABACGLAQEA3wEAIYwBAQDfAQAhjQEBAN8BACGOAQgA6gEAIY8BAQDfAQAhB3gBAN8BACF7AgDgAQAhiwEBAN8BACGMAQEA3wEAIY0BAQDfAQAhjgEIAOoBACGPAQEA3wEAIQd4AQAAAAF7AgAAAAGLAQEAAAABjAEBAAAAAY0BAQAAAAGOAQgAAAABjwEBAAAAAQYGAAD1AQAgeAEAAAABewIAAAABfQEAAAABiwEBAAAAAZABAQAAAAECAAAADQAgGQAAtgIAIAMAAAANACAZAAC2AgAgGgAAtQIAIAESAADnAgAwAgAAAA0AIBIAALUCACACAAAAkgIAIBIAALQCACAFeAEA3wEAIXsCAOABACF9AQDfAQAhiwEBAN8BACGQAQEA3wEAIQYGAADzAQAgeAEA3wEAIXsCAOABACF9AQDfAQAhiwEBAN8BACGQAQEA3wEAIQYGAAD1AQAgeAEAAAABewIAAAABfQEAAAABiwEBAAAAAZABAQAAAAEFeAEAAAABewIAAAABfQEAAAABiwEBAAAAAZEBIAAAAAECAAAACQAgGQAAwgIAIAMAAAAJACAZAADCAgAgGgAAwQIAIAESAADmAgAwCwQAAMgBACB1AADOAQAwdgAABwAQdwAAzgEAMHgBAAAAAXkBAMABACF7AgDGAQAhfQEAwAEAIYsBAQDAAQAhkQEgAM8BACGlAQAAzQEAIAIAAAAJACASAADBAgAgAgAAAL8CACASAADAAgAgCXUAAL4CADB2AAC_AgAQdwAAvgIAMHgBAMABACF5AQDAAQAhewIAxgEAIX0BAMABACGLAQEAwAEAIZEBIADPAQAhCXUAAL4CADB2AAC_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-QAAAAAF_QAAAAAEFeAEAAAABeQEAAAABewIAAAABfQEAAAABiwEBAAAAAQMAAAAfACAZAADkAgAgGgAA7QIAIA0AAAAfACASAADtAgAgeAEA3wEAIX5AAOEBACGLAQEA3wEAIY8BAQDfAQAhlQEBAN8BACGaAUAA4QEAIZwBAQDfAQAhnQEBAN8BACGeAQgA6gEAIZ8BCADqAQAhoAEIAOoBACELeAEA3wEAIX5AAOEBACGLAQEA3wEAIY8BAQDfAQAhlQEBAN8BACGaAUAA4QEAIZwBAQDfAQAhnQEBAN8BACGeAQgA6gEAIZ8BCADqAQAhoAEIAOoBACEQAwAAwwIAIAcAAMUCACAIAADGAgAgCQAAxwIAIAoAAMgCACB4AQAAAAF-QAAAAAGSAQEAAAABkwEBAAAAAZQBAgAAAAGVAQEAAAABlgEBAAAAAZcBCAAAAAGZAQAAAJkBApoBQAAAAAGbAQIAAAABAgAAAAUAIBkAAO4CACADAAAAAwAgGQAA7gIAIBoAAPICACASAAAAAwAgAwAAhAIAIAcAAIYCACAIAACHAgAgCQAAiAIAIAoAAIkCACASAADyAgAgeAEA3wEAIX5AAOEBACGSAQEA3wEAIZMBAQDfAQAhlAECAOABACGVAQEA3wEAIZYBAQDfAQAhlwEIAOoBACGZAQAAgwKZASKaAUAA4QEAIZsBAgDgAQAhEAMAAIQCACAHAACGAgAgCAAAhwIAIAkAAIgCACAKAACJAgAgeAEA3wEAIX5AAOEBACGSAQEA3wEAIZMBAQDfAQAhlAECAOABACGVAQEA3wEAIZYBAQDfAQAhlwEIAOoBACGZAQAAgwKZASKaAUAA4QEAIZsBAgDgAQAhEAMAAMMCACAFAADEAgAgBwAAxQIAIAgAAMYCACAJAADHAgAgeAEAAAABfkAAAAABkgEBAAAAAZMBAQAAAAGUAQIAAAABlQEBAAAAAZYBAQAAAAGXAQgAAAABmQEAAACZAQKaAUAAAAABmwECAAAAAQIAAAAFACAZAADzAgAgEAMAAMMCACAFAADEAgAgCAAAxgIAIAkAAMcCACAKAADIAgAgeAEAAAABfkAAAAABkgEBAAAAAZMBAQAAAAGUAQIAAAABlQEBAAAAAZYBAQAAAAGXAQgAAAABmQEAAACZAQKaAUAAAAABmwECAAAAAQIAAAAFACAZAAD1AgAgAwAAAAMAIBkAAPMCACAaAAD5AgAgEgAAAAMAIAMAAIQCACAFAACFAgAgBwAAhgIAIAgAAIcCACAJAACIAgAgEgAA-QIAIHgBAN8BACF-QADhAQAhkgEBAN8BACGTAQEA3wEAIZQBAgDgAQAhlQEBAN8BACGWAQEA3wEAIZcBCADqAQAhmQEAAIMCmQEimgFAAOEBACGbAQIA4AEAIRADAACEAgAgBQAAhQIAIAcAAIYCACAIAACHAgAgCQAAiAIAIHgBAN8BACF-QADhAQAhkgEBAN8BACGTAQEA3wEAIZQBAgDgAQAhlQEBAN8BACGWAQEA3wEAIZcBCADqAQAhmQEAAIMCmQEimgFAAOEBACGbAQIA4AEAIQMAAAADACAZAAD1AgAgGgAA_AIAIBIAAAADACADAACEAgAgBQAAhQIAIAgAAIcCACAJAACIAgAgCgAAiQIAIBIAAPwCACB4AQDfAQAhfkAA4QEAIZIBAQDfAQAhkwEBAN8BACGUAQIA4AEAIZUBAQDfAQAhlgEBAN8BACGXAQgA6gEAIZkBAACDApkBIpoBQADhAQAhmwECAOABACEQAwAAhAIAIAUAAIUCACAIAACHAgAgCQAAiAIAIAoAAIkCACB4AQDfAQAhfkAA4QEAIZIBAQDfAQAhkwEBAN8BACGUAQIA4AEAIZUBAQDfAQAhlgEBAN8BACGXAQgA6gEAIZkBAACDApkBIpoBQADhAQAhmwECAOABACEQAwAAwwIAIAUAAMQCACAHAADFAgAgCQAAxwIAIAoAAMgCACB4AQAAAAF-QAAAAAGSAQEAAAABkwEBAAAAAZQBAgAAAAGVAQEAAAABlgEBAAAAAZcBCAAAAAGZAQAAAJkBApoBQAAAAAGbAQIAAAABAgAAAAUAIBkAAP0CACADAAAAAwAgGQAA_QIAIBoAAIEDACASAAAAAwAgAwAAhAIAIAUAAIUCACAHAACGAgAgCQAAiAIAIAoAAIkCACASAACBAwAgeAEA3wEAIX5AAOEBACGSAQEA3wEAIZMBAQDfAQAhlAECAOABACGVAQEA3wEAIZYBAQDfAQAhlwEIAOoBACGZAQAAgwKZASKaAUAA4QEAIZsBAgDgAQAhEAMAAIQCACAFAACFAgAgBwAAhgIAIAkAAIgCACAKAACJAgAgeAEA3wEAIX5AAOEBACGSAQEA3wEAIZMBAQDfAQAhlAECAOABACGVAQEA3wEAIZYBAQDfAQAhlwEIAOoBACGZAQAAgwKZASKaAUAA4QEAIZsBAgDgAQAhEAMAAMMCACAFAADEAgAgBwAAxQIAIAgAAMYCACAKAADIAgAgeAEAAAABfkAAAAABkgEBAAAAAZMBAQAAAAGUAQIAAAABlQEBAAAAAZYBAQAAAAGXAQgAAAABmQEAAACZAQKaAUAAAAABmwECAAAAAQIAAAAFACAZAACCAwAgAwAAAAMAIBkAAIIDACAaAACGAwAgEgAAAAMAIAMAAIQCACAFAACFAgAgBwAAhgIAIAgAAIcCACAKAACJAgAgEgAAhgMAIHgBAN8BACF-QADhAQAhkgEBAN8BACGTAQEA3wEAIZQBAgDgAQAhlQEBAN8BACGWAQEA3wEAIZcBCADqAQAhmQEAAIMCmQEimgFAAOEBACGbAQIA4AEAIRADAACEAgAgBQAAhQIAIAcAAIYCACAIAACHAgAgCgAAiQIAIHgBAN8BACF-QADhAQAhkgEBAN8BACGTAQEA3wEAIZQBAgDgAQAhlQEBAN8BACGWAQEA3wEAIZcBCADqAQAhmQEAAIMCmQEimgFAAOEBACGbAQIA4AEAIQILAAgMBgIHAwABBQoDBw4ECBIFCRYGChcECwAHAQQAAgIEAAIGAAIBBAACAQQAAgUFGAAHGQAIGgAJGwAKHAABDB0AAAAABQsADR8ADiAADyEAECIAEQAAAAAABQsADR8ADiAADyEAECIAEQEDAAEBAwABBQsAFh8AFyAAGCEAGSIAGgAAAAAABQsAFh8AFyAAGCEAGSIAGgEEAAIBBAACBQsAHx8AICAAISEAIiIAIwAAAAAABQsAHx8AICAAISEAIiIAIwIEAAIGAAICBAACBgACBQsAKB8AKSAAKiEAKyIALAAAAAAABQsAKB8AKSAAKiEAKyIALAEEAAIBBAACBQsAMR8AMiAAMyEANCIANQAAAAAABQsAMR8AMiAAMyEANCIANQEEAAIBBAACBQsAOh8AOyAAPCEAPSIAPgAAAAAABQsAOh8AOyAAPCEAPSIAPg0CAQ4eAQ8hARAiAREjARMlARQnCRUoChYqARcsCRgtCxsuARwvAR0wCSMzDCQ0EiU1AiY2Aic3Aig4Aik5Aio7Ais9CSw-Ey1AAi5CCS9DFDBEAjFFAjJGCTNJFTRKGzVLAzZMAzdNAzhOAzlPAzpRAztTCTxUHD1WAz5YCT9ZHUBaA0FbA0JcCUNfHkRgJEVhBEZiBEdjBEhkBEllBEpnBEtpCUxqJU1sBE5uCU9vJlBwBFFxBFJyCVN1J1R2LVV3BVZ4BVd5BVh6BVl7BVp9BVt_CVyAAS5dggEFXoQBCV-FAS9ghgEFYYcBBWKIAQljiwEwZIwBNmWNAQZmjgEGZ48BBmiQAQZpkQEGapMBBmuVAQlslgE3bZgBBm6aAQlvmwE4cJwBBnGdAQZyngEJc6EBOXSiAT8"
     };
     config.compilerWasm = {
       getRuntime: async () => await import("@prisma/client/runtime/query_compiler_fast_bg.postgresql.mjs"),
@@ -20571,6 +20571,22 @@ var init_define = __esm({
   }
 });
 
+// engine/src/slug.ts
+function uniqueSlug(text, taken) {
+  const base = slugify2(text) || "item";
+  const used = new Set(taken);
+  if (!used.has(base)) return base;
+  for (let n = 2; ; n++) if (!used.has(`${base}-${n}`)) return `${base}-${n}`;
+}
+var slugify2, messageHandle;
+var init_slug = __esm({
+  "engine/src/slug.ts"() {
+    "use strict";
+    slugify2 = (s) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40).replace(/-$/, "");
+    messageHandle = () => `m-${Array.from(crypto.getRandomValues(new Uint8Array(3)), (b) => b.toString(16).padStart(2, "0")).join("")}`;
+  }
+});
+
 // engine/src/rules.ts
 function computeGap(level, dependsOn, plan) {
   const dir = direction(plan);
@@ -20639,11 +20655,10 @@ function checkPlan(plan, nodes) {
           "warning",
           "vague_criterion",
           n.ref,
-          `${n.ref} criterion ${c.index} has no figure: state a number, a date or a threshold.`
+          `${n.ref} criterion "${c.slug}" has no figure: state a number, a date or a threshold.`
         );
       }
     }
-    if (n.requirements.length === 0) add("warning", "no_requirements", n.ref, `${n.ref} has no requirement.`);
     if (n.resources.length === 0) add("warning", "no_resources", n.ref, `${n.ref} needs no resource.`);
     if (n.enables.length === 0 && !atTarget(n)) {
       add("warning", "leads_nowhere", n.ref, `${n.ref} enables no later node and is not the target.`);
@@ -20695,7 +20710,7 @@ async function loadPlan(slug) {
         orderBy: { seq: "asc" },
         include: {
           criteria: byPosition2,
-          requirements: { ...byPosition2, include: { providers: { include: { node: { select: { ref: true, seq: true } } } } } },
+          requirements: { ...byPosition2, include: { provider: { select: { ref: true } } } },
           resources: byPosition2,
           messages: byPosition2
         }
@@ -20704,9 +20719,8 @@ async function loadPlan(slug) {
   });
   const byRef = new Map(plan.nodes.map((n) => [n.ref, n]));
   const bySeq = (a, b) => byRef.get(a).seq - byRef.get(b).seq;
-  const providersOf = (r) => r.providers.map((p) => p.node.ref).sort(bySeq);
   const prereqs = new Map(
-    plan.nodes.map((n) => [n.ref, [...new Set(n.requirements.flatMap(providersOf))].sort(bySeq)])
+    plan.nodes.map((n) => [n.ref, [...new Set(n.requirements.map((r) => r.provider.ref))].sort(bySeq)])
   );
   const enables = new Map(plan.nodes.map((n) => [n.ref, []]));
   for (const [later, formers] of prereqs) for (const former of formers) enables.get(former).push(later);
@@ -20721,14 +20735,15 @@ async function loadPlan(slug) {
       level: n.level,
       status: n.status,
       size: n.size,
-      criteria: n.criteria.map((c, i) => ({ index: i + 1, text: c.text, met: c.met })),
-      requirements: n.requirements.map((r, i) => {
-        const providedBy = providersOf(r);
-        const met = providedBy.length ? providedBy.every((ref) => byRef.get(ref).status === "done") : r.met;
-        return { index: i + 1, text: r.text, met, providedBy };
-      }),
-      resources: n.resources.map((r, i) => ({
-        index: i + 1,
+      criteria: n.criteria.map((c) => ({ slug: c.slug, text: c.text, met: c.met })),
+      requirements: n.requirements.map((r) => ({
+        slug: r.slug,
+        text: r.text,
+        met: byRef.get(r.provider.ref).status === "done",
+        providedBy: r.provider.ref
+      })),
+      resources: n.resources.map((r) => ({
+        slug: r.slug,
         kind: r.kind,
         name: r.name,
         quantity: r.quantity,
@@ -20737,8 +20752,8 @@ async function loadPlan(slug) {
       dependsOn: deps.map((d) => d.ref),
       enables: enables.get(n.ref).sort(bySeq),
       gap: computeGap(n.level, deps, plan),
-      messages: n.messages.map((m, i) => ({
-        index: i + 1,
+      messages: n.messages.map((m) => ({
+        id: m.handle,
         author: m.author,
         text: m.text,
         at: m.createdAt.toISOString(),
@@ -20842,15 +20857,15 @@ var init_graph = __esm({
 
 // engine/src/ops/node.ts
 async function prereqsOf(planId) {
-  const rows = await db.requirementProvider.findMany({
+  const rows = await db.requirement.findMany({
     where: { node: { planId } },
-    select: { nodeId: true, requirement: { select: { nodeId: true } } }
+    select: { nodeId: true, providerId: true }
   });
   const prereqs = /* @__PURE__ */ new Map();
   for (const row of rows) {
-    const list = prereqs.get(row.requirement.nodeId) ?? [];
-    list.push(row.nodeId);
-    prereqs.set(row.requirement.nodeId, list);
+    const list = prereqs.get(row.nodeId) ?? [];
+    list.push(row.providerId);
+    prereqs.set(row.nodeId, list);
   }
   return prereqs;
 }
@@ -20868,6 +20883,7 @@ var init_node = __esm({
     init_db();
     init_graph();
     init_rules();
+    init_slug();
     init_views();
     init_define();
     refFlag = external_exports.string().describe("Node ref, e.g. N3.");
@@ -20914,11 +20930,10 @@ var init_node = __esm({
           title: external_exports.string().min(1).describe("Node title."),
           description: external_exports.string().default("").describe("What the node is about."),
           enables: external_exports.array(external_exports.string()).default([]).describe("Later node this one provides a requirement of. Repeatable. The requirement is worded as the title."),
-          forRequirement: external_exports.number().int().min(1).optional().describe("With a single --enables: provide that existing requirement of it instead of adding one."),
+          forRequirement: external_exports.string().min(1).optional().describe("With a single --enables: slug of an existing requirement of it that the new node provides instead, in place of its current provider."),
           level: external_exports.number().optional().describe("Metric value reached once done. Default: one full step before the enabled node, or the target value for the first node."),
           size: sizeFlag.default(50),
-          criterion: external_exports.array(external_exports.string().min(1)).default([]).describe("Success criterion, precise and checkable. Repeatable."),
-          requirement: external_exports.array(external_exports.string().min(1)).default([]).describe("Requirement to start the node that no node provides yet. Repeatable.")
+          criterion: external_exports.array(external_exports.string().min(1)).default([]).describe("Success criterion, precise and checkable. Repeatable.")
         }),
         run: async (input2) => {
           const plan = await planOf(input2.plan);
@@ -20933,11 +20948,9 @@ var init_node = __esm({
           if (input2.forRequirement !== void 0) {
             if (enables.length !== 1) throw new OpError("--for-requirement needs exactly one --enables.");
             const later = enables[0];
-            const rows = await db.requirement.findMany({ where: { nodeId: later.id }, orderBy: { position: "asc" } });
-            const row = rows[input2.forRequirement - 1];
-            if (!row) {
-              throw new OpError(`${later.ref} has no requirement ${input2.forRequirement} (it has ${rows.length}).`, "not_found");
-            }
+            const slug = input2.forRequirement.trim().toLowerCase();
+            const row = await db.requirement.findUnique({ where: { nodeId_slug: { nodeId: later.id, slug } } });
+            if (!row) throw new OpError(`${later.ref} has no requirement "${slug}".`, "not_found");
             existingRequirement = row.id;
           }
           let level = input2.level;
@@ -20950,7 +20963,10 @@ var init_node = __esm({
           }
           const seq = Math.max(0, ...existing.map((n) => n.seq)) + 1;
           const ref = `N${seq}`;
-          const asItems = (texts) => texts.map((text, i) => ({ text, position: i + 1 }));
+          const criteria = [];
+          for (const [i, text] of input2.criterion.entries()) {
+            criteria.push({ text, position: i + 1, slug: uniqueSlug(text, criteria.map((c) => c.slug)) });
+          }
           await db.$transaction(async (tx) => {
             const node2 = await tx.node.create({
               data: {
@@ -20961,22 +20977,22 @@ var init_node = __esm({
                 description: input2.description,
                 level,
                 size: input2.size,
-                criteria: { create: asItems(input2.criterion) },
-                requirements: { create: asItems(input2.requirement) }
+                criteria: { create: criteria }
               }
             });
             if (existingRequirement) {
-              await tx.requirementProvider.create({ data: { requirementId: existingRequirement, nodeId: node2.id } });
+              await tx.requirement.update({ where: { id: existingRequirement }, data: { providerId: node2.id } });
               return;
             }
             for (const later of enables) {
-              const last = await tx.requirement.aggregate({ where: { nodeId: later.id }, _max: { position: true } });
+              const rows = await tx.requirement.findMany({ where: { nodeId: later.id }, select: { slug: true, position: true } });
               await tx.requirement.create({
                 data: {
                   nodeId: later.id,
-                  position: (last._max.position ?? 0) + 1,
+                  position: Math.max(0, ...rows.map((r) => r.position)) + 1,
+                  slug: uniqueSlug(input2.title, rows.map((r) => r.slug)),
                   text: input2.title,
-                  providers: { create: { nodeId: node2.id } }
+                  providerId: node2.id
                 }
               });
             }
@@ -21005,7 +21021,7 @@ var init_node = __esm({
       }),
       defineOp({
         name: "node.delete",
-        summary: "Delete a node, with its criteria, requirements, resources, messages and the links where it provides a requirement.",
+        summary: "Delete a node, with its criteria, requirements, resources, messages, and the requirements of later nodes it provides.",
         mutates: true,
         input: external_exports.strictObject({ plan: planFlag, ref: refFlag }),
         run: async ({ plan, ref }) => {
@@ -21019,180 +21035,179 @@ var init_node = __esm({
 });
 
 // engine/src/ops/items.ts
-function rowAt(rows, index, what, ref) {
-  const row = rows[index - 1];
-  if (!row) throw new OpError(`${ref} has no ${what} ${index} (it has ${rows.length}).`, "not_found");
-  return row;
+function rowWith(rows, slug, what, ref) {
+  const row = rows.find((r) => r.slug === slug.trim().toLowerCase());
+  if (row) return row;
+  const known = rows.map((r) => r.slug).join(", ");
+  throw new OpError(`${ref} has no ${what} "${slug}"${known ? ` (it has: ${known})` : ` (it has none)`}.`, "not_found");
 }
-async function providersFor(found, refs) {
-  const providers = [];
-  for (const ref of [...new Set(refs.map((r) => r.trim().toUpperCase()))]) {
-    const former = await nodeOf(found.plan.slug, ref);
-    await assertNoLoop(found.plan.id, found.node, former.node);
-    providers.push(former.node);
+function slugFor(rows, asked, text, what, ref) {
+  const taken = rows.map((r) => r.slug);
+  if (asked === void 0) return uniqueSlug(text, taken);
+  const slug = uniqueSlug(asked, []);
+  if (taken.includes(slug)) throw new OpError(`${ref} already has a ${what} "${slug}".`, "conflict");
+  return slug;
+}
+function renamed(rows, row, asked, what, ref) {
+  if (asked === void 0) return {};
+  const slug = uniqueSlug(asked, []);
+  if (rows.some((r) => r.id !== row.id && r.slug === slug)) {
+    throw new OpError(`${ref} already has a ${what} "${slug}".`, "conflict");
   }
-  return providers;
+  return { slug };
 }
-function checklistOps(entity, what, hint, table2) {
-  return [
-    defineOp({
-      name: `${entity}.add`,
-      summary: `Add a ${what} to a node. ${hint}`,
-      mutates: true,
-      input: external_exports.strictObject({ plan: planFlag, node: nodeFlag, text: external_exports.string().min(1).describe(`The ${what}.`) }),
-      run: async ({ plan, node: node2, text }) => {
-        const found = await nodeOf(plan, node2);
-        await table2.add(found.node.id, nextPosition(await table2.rows(found.node.id)), text);
-        return loadNode(found.plan.slug, found.node.ref);
-      }
-    }),
-    defineOp({
-      name: `${entity}.update`,
-      summary: `Reword a ${what}, or mark it met or not met.`,
-      mutates: true,
-      input: external_exports.strictObject({
-        plan: planFlag,
-        node: nodeFlag,
-        index: indexFlag,
-        text: external_exports.string().min(1).optional().describe(`The ${what}.`),
-        met: external_exports.boolean().optional().describe("true once it holds, false otherwise.")
-      }),
-      run: async ({ plan, node: node2, index, ...data }) => {
-        const found = await nodeOf(plan, node2);
-        const row = rowAt(await table2.rows(found.node.id), index, what, found.node.ref);
-        await table2.set(row.id, data);
-        return loadNode(found.plan.slug, found.node.ref);
-      }
-    }),
-    defineOp({
-      name: `${entity}.remove`,
-      summary: `Remove a ${what} from a node.`,
-      mutates: true,
-      input: external_exports.strictObject({ plan: planFlag, node: nodeFlag, index: indexFlag }),
-      run: async ({ plan, node: node2, index }) => {
-        const found = await nodeOf(plan, node2);
-        const row = rowAt(await table2.rows(found.node.id), index, what, found.node.ref);
-        await table2.drop(row.id);
-        return loadNode(found.plan.slug, found.node.ref);
-      }
-    })
-  ];
+async function providerFor(found, ref) {
+  const former = await nodeOf(found.plan.slug, ref);
+  await assertNoLoop(found.plan.id, found.node, former.node);
+  return former.node;
 }
-var nodeFlag, indexFlag, byPosition, nextPosition, criteria, requirementRows, byFlag, requirementOps, resourceRows, resourceOps, itemOps;
+var nodeFlag, slugFlag, newSlugFlag, renameFlag, byPosition, nextPosition, done, criterionRows, criterionOps, requirementRows, providedByFlag, requirementOps, resourceRows, resourceOps, itemOps;
 var init_items = __esm({
   "engine/src/ops/items.ts"() {
     "use strict";
     init_zod();
     init_db();
+    init_slug();
     init_views();
     init_define();
     init_node();
     nodeFlag = external_exports.string().describe("Node ref, e.g. N3.");
-    indexFlag = external_exports.number().int().min(1).describe("Position in the node's list, starting at 1.");
+    slugFlag = (what) => external_exports.string().min(1).describe(`Slug of the ${what}, as shown by rb node show.`);
+    newSlugFlag = (from) => external_exports.string().min(1).optional().describe(`Handle of the item, unique in the node. Derived from the ${from} when omitted.`);
+    renameFlag = external_exports.string().min(1).optional().describe("New slug, unique in the node.");
     byPosition = { orderBy: { position: "asc" } };
     nextPosition = (rows) => Math.max(0, ...rows.map((r) => r.position)) + 1;
-    criteria = {
-      rows: (nodeId) => db.criterion.findMany({ where: { nodeId }, ...byPosition }),
-      add: (nodeId, position, text) => db.criterion.create({ data: { nodeId, position, text } }),
-      set: (id, data) => db.criterion.update({ where: { id }, data }),
-      drop: (id) => db.criterion.delete({ where: { id } })
-    };
-    requirementRows = (nodeId) => db.requirement.findMany({ where: { nodeId }, ...byPosition, include: { providers: true } });
-    byFlag = external_exports.string().describe("Ref of the former node that provides it, e.g. N7.");
+    done = (found) => loadNode(found.plan.slug, found.node.ref);
+    criterionRows = (nodeId) => db.criterion.findMany({ where: { nodeId }, ...byPosition });
+    criterionOps = [
+      defineOp({
+        name: "criterion.add",
+        summary: "Add a success criterion to a node. Make it precise: a number, a date or a threshold that can be checked.",
+        mutates: true,
+        input: external_exports.strictObject({
+          plan: planFlag,
+          node: nodeFlag,
+          text: external_exports.string().min(1).describe("The success criterion."),
+          slug: newSlugFlag("text")
+        }),
+        run: async ({ plan, node: node2, text, slug }) => {
+          const found = await nodeOf(plan, node2);
+          const rows = await criterionRows(found.node.id);
+          await db.criterion.create({
+            data: {
+              nodeId: found.node.id,
+              position: nextPosition(rows),
+              text,
+              slug: slugFor(rows, slug, text, "criterion", found.node.ref)
+            }
+          });
+          return done(found);
+        }
+      }),
+      defineOp({
+        name: "criterion.update",
+        summary: "Reword a success criterion, rename its slug, or mark it met or not met.",
+        mutates: true,
+        input: external_exports.strictObject({
+          plan: planFlag,
+          node: nodeFlag,
+          criterion: slugFlag("criterion"),
+          text: external_exports.string().min(1).optional().describe("The success criterion."),
+          met: external_exports.boolean().optional().describe("true once it holds, false otherwise."),
+          slug: renameFlag
+        }),
+        run: async ({ plan, node: node2, criterion, slug, ...data }) => {
+          const found = await nodeOf(plan, node2);
+          const rows = await criterionRows(found.node.id);
+          const row = rowWith(rows, criterion, "criterion", found.node.ref);
+          await db.criterion.update({
+            where: { id: row.id },
+            data: { ...data, ...renamed(rows, row, slug, "criterion", found.node.ref) }
+          });
+          return done(found);
+        }
+      }),
+      defineOp({
+        name: "criterion.remove",
+        summary: "Remove a success criterion from a node.",
+        mutates: true,
+        input: external_exports.strictObject({ plan: planFlag, node: nodeFlag, criterion: slugFlag("criterion") }),
+        run: async ({ plan, node: node2, criterion }) => {
+          const found = await nodeOf(plan, node2);
+          const row = rowWith(await criterionRows(found.node.id), criterion, "criterion", found.node.ref);
+          await db.criterion.delete({ where: { id: row.id } });
+          return done(found);
+        }
+      })
+    ];
+    requirementRows = (nodeId) => db.requirement.findMany({ where: { nodeId }, ...byPosition });
+    providedByFlag = external_exports.string().min(1).describe("Ref of the former node that provides it, e.g. N7.");
     requirementOps = [
       defineOp({
         name: "requirement.add",
-        summary: "Add a requirement to a node: what must be true before work on it can start. --provided-by links it to the former nodes that provide it.",
+        summary: "Add a requirement to a node: what must be true before work on it can start. Exactly one former node provides it, and it is met once that node is done.",
         mutates: true,
         input: external_exports.strictObject({
           plan: planFlag,
           node: nodeFlag,
           text: external_exports.string().min(1).describe("The requirement."),
-          providedBy: external_exports.array(external_exports.string()).default([]).describe("Former node that provides it. Repeatable.")
+          providedBy: providedByFlag,
+          slug: newSlugFlag("text")
         }),
-        run: async ({ plan, node: node2, text, providedBy }) => {
+        run: async ({ plan, node: node2, text, providedBy, slug }) => {
           const found = await nodeOf(plan, node2);
-          const providers = await providersFor(found, providedBy);
-          const position = nextPosition(await requirementRows(found.node.id));
+          const provider = await providerFor(found, providedBy);
+          const rows = await requirementRows(found.node.id);
           await db.requirement.create({
             data: {
               nodeId: found.node.id,
-              position,
+              position: nextPosition(rows),
               text,
-              providers: { create: providers.map((p) => ({ nodeId: p.id })) }
+              slug: slugFor(rows, slug, text, "requirement", found.node.ref),
+              providerId: provider.id
             }
           });
-          return loadNode(found.plan.slug, found.node.ref);
+          return done(found);
         }
       }),
       defineOp({
         name: "requirement.update",
-        summary: "Reword a requirement, or mark it met or not met when no node provides it.",
+        summary: "Reword a requirement, rename its slug, or change the former node that provides it. The plan must stay free of loops.",
         mutates: true,
         input: external_exports.strictObject({
           plan: planFlag,
           node: nodeFlag,
-          index: indexFlag,
+          requirement: slugFlag("requirement"),
           text: external_exports.string().min(1).optional().describe("The requirement."),
-          met: external_exports.boolean().optional().describe("true once it holds, false otherwise. Only without providers: otherwise it is met once they are all done.")
+          providedBy: providedByFlag.optional(),
+          slug: renameFlag
         }),
-        run: async ({ plan, node: node2, index, ...data }) => {
+        run: async ({ plan, node: node2, requirement, text, providedBy, slug }) => {
           const found = await nodeOf(plan, node2);
-          const row = rowAt(await requirementRows(found.node.id), index, "requirement", found.node.ref);
-          if (data.met !== void 0 && row.providers.length > 0) {
-            throw new OpError(
-              `${found.node.ref} requirement ${index} is provided by nodes: it is met once they are all done.`,
-              "conflict"
-            );
-          }
-          await db.requirement.update({ where: { id: row.id }, data });
-          return loadNode(found.plan.slug, found.node.ref);
+          const rows = await requirementRows(found.node.id);
+          const row = rowWith(rows, requirement, "requirement", found.node.ref);
+          const provider = providedBy === void 0 ? void 0 : await providerFor(found, providedBy);
+          await db.requirement.update({
+            where: { id: row.id },
+            data: {
+              ...text === void 0 ? {} : { text },
+              ...provider ? { providerId: provider.id } : {},
+              ...renamed(rows, row, slug, "requirement", found.node.ref)
+            }
+          });
+          return done(found);
         }
       }),
       defineOp({
         name: "requirement.remove",
-        summary: "Remove a requirement from a node, with its links to the nodes that provide it.",
+        summary: "Remove a requirement from a node, and with it the link to the node that provides it.",
         mutates: true,
-        input: external_exports.strictObject({ plan: planFlag, node: nodeFlag, index: indexFlag }),
-        run: async ({ plan, node: node2, index }) => {
+        input: external_exports.strictObject({ plan: planFlag, node: nodeFlag, requirement: slugFlag("requirement") }),
+        run: async ({ plan, node: node2, requirement }) => {
           const found = await nodeOf(plan, node2);
-          const row = rowAt(await requirementRows(found.node.id), index, "requirement", found.node.ref);
+          const row = rowWith(await requirementRows(found.node.id), requirement, "requirement", found.node.ref);
           await db.requirement.delete({ where: { id: row.id } });
-          return loadNode(found.plan.slug, found.node.ref);
-        }
-      }),
-      defineOp({
-        name: "requirement.link",
-        summary: "Say that a former node provides a requirement. The plan must stay free of loops.",
-        mutates: true,
-        input: external_exports.strictObject({ plan: planFlag, node: nodeFlag, index: indexFlag, by: byFlag }),
-        run: async ({ plan, node: node2, index, by }) => {
-          const found = await nodeOf(plan, node2);
-          const row = rowAt(await requirementRows(found.node.id), index, "requirement", found.node.ref);
-          const [former] = await providersFor(found, [by]);
-          if (row.providers.some((p) => p.nodeId === former.id)) {
-            throw new OpError(`${former.ref} already provides ${found.node.ref} requirement ${index}.`, "conflict");
-          }
-          await db.requirementProvider.create({ data: { requirementId: row.id, nodeId: former.id } });
-          return loadNode(found.plan.slug, found.node.ref);
-        }
-      }),
-      defineOp({
-        name: "requirement.unlink",
-        summary: "Say that a node no longer provides a requirement.",
-        mutates: true,
-        input: external_exports.strictObject({ plan: planFlag, node: nodeFlag, index: indexFlag, by: byFlag }),
-        run: async ({ plan, node: node2, index, by }) => {
-          const found = await nodeOf(plan, node2);
-          const row = rowAt(await requirementRows(found.node.id), index, "requirement", found.node.ref);
-          const former = await nodeOf(found.plan.slug, by);
-          if (!row.providers.some((p) => p.nodeId === former.node.id)) {
-            throw new OpError(`${former.node.ref} does not provide ${found.node.ref} requirement ${index}.`, "not_found");
-          }
-          await db.requirementProvider.delete({
-            where: { requirementId_nodeId: { requirementId: row.id, nodeId: former.node.id } }
-          });
-          return loadNode(found.plan.slug, found.node.ref);
+          return done(found);
         }
       })
     ];
@@ -21208,79 +21223,85 @@ var init_items = __esm({
           kind: external_exports.string().min(1).describe("Kind of resource, free text: human, computing, capital, machine..."),
           name: external_exports.string().min(1).describe("What exactly, e.g. backend engineer, GPU A100, cash."),
           quantity: external_exports.number().positive().describe("How much."),
-          unit: external_exports.string().min(1).describe("Unit of the quantity, e.g. person-days, hours, EUR.")
+          unit: external_exports.string().min(1).describe("Unit of the quantity, e.g. person-days, hours, EUR."),
+          slug: newSlugFlag("name")
         }),
-        run: async ({ plan, node: node2, ...data }) => {
+        run: async ({ plan, node: node2, slug, ...data }) => {
           const found = await nodeOf(plan, node2);
-          const position = nextPosition(await resourceRows(found.node.id));
-          await db.resourceNeed.create({ data: { ...data, nodeId: found.node.id, position } });
-          return loadNode(found.plan.slug, found.node.ref);
+          const rows = await resourceRows(found.node.id);
+          await db.resourceNeed.create({
+            data: {
+              ...data,
+              nodeId: found.node.id,
+              position: nextPosition(rows),
+              slug: slugFor(rows, slug, data.name, "resource", found.node.ref)
+            }
+          });
+          return done(found);
         }
       }),
       defineOp({
         name: "resource.update",
-        summary: "Change a resource of a node.",
+        summary: "Change a resource of a node, or rename its slug.",
         mutates: true,
         input: external_exports.strictObject({
           plan: planFlag,
           node: nodeFlag,
-          index: indexFlag,
+          resource: slugFlag("resource"),
           kind: external_exports.string().min(1).optional().describe("Kind of resource."),
           name: external_exports.string().min(1).optional().describe("What exactly."),
           quantity: external_exports.number().positive().optional().describe("How much."),
-          unit: external_exports.string().min(1).optional().describe("Unit of the quantity.")
+          unit: external_exports.string().min(1).optional().describe("Unit of the quantity."),
+          slug: renameFlag
         }),
-        run: async ({ plan, node: node2, index, ...data }) => {
+        run: async ({ plan, node: node2, resource, slug, ...data }) => {
           const found = await nodeOf(plan, node2);
-          const row = rowAt(await resourceRows(found.node.id), index, "resource", found.node.ref);
-          await db.resourceNeed.update({ where: { id: row.id }, data });
-          return loadNode(found.plan.slug, found.node.ref);
+          const rows = await resourceRows(found.node.id);
+          const row = rowWith(rows, resource, "resource", found.node.ref);
+          await db.resourceNeed.update({
+            where: { id: row.id },
+            data: { ...data, ...renamed(rows, row, slug, "resource", found.node.ref) }
+          });
+          return done(found);
         }
       }),
       defineOp({
         name: "resource.remove",
         summary: "Remove a resource from a node.",
         mutates: true,
-        input: external_exports.strictObject({ plan: planFlag, node: nodeFlag, index: indexFlag }),
-        run: async ({ plan, node: node2, index }) => {
+        input: external_exports.strictObject({ plan: planFlag, node: nodeFlag, resource: slugFlag("resource") }),
+        run: async ({ plan, node: node2, resource }) => {
           const found = await nodeOf(plan, node2);
-          const row = rowAt(await resourceRows(found.node.id), index, "resource", found.node.ref);
+          const row = rowWith(await resourceRows(found.node.id), resource, "resource", found.node.ref);
           await db.resourceNeed.delete({ where: { id: row.id } });
-          return loadNode(found.plan.slug, found.node.ref);
+          return done(found);
         }
       })
     ];
-    itemOps = [
-      ...checklistOps(
-        "criterion",
-        "success criterion",
-        "Make it precise: a number, a date or a threshold that can be checked.",
-        criteria
-      ),
-      ...requirementOps,
-      ...resourceOps
-    ];
+    itemOps = [...criterionOps, ...requirementOps, ...resourceOps];
   }
 });
 
 // engine/src/ops/messages.ts
-async function messageAt(plan, node2, index) {
+async function messageWith(plan, node2, id) {
   const found = await nodeOf(plan, node2);
-  const rows = await rowsOf(found.node.id);
-  const row = rows[index - 1];
-  if (!row) throw new OpError(`${found.node.ref} has no message ${index} (it has ${rows.length}).`, "not_found");
+  const row = await db.message.findUnique({
+    where: { nodeId_handle: { nodeId: found.node.id, handle: id.trim().toLowerCase() } }
+  });
+  if (!row) throw new OpError(`${found.node.ref} has no message "${id}". List them with: rb message list --node ${found.node.ref}`, "not_found");
   return { ...found, row };
 }
-var nodeFlag2, indexFlag2, rowsOf, messageOps;
+var nodeFlag2, messageFlag, rowsOf, messageOps;
 var init_messages = __esm({
   "engine/src/ops/messages.ts"() {
     "use strict";
     init_zod();
     init_db();
+    init_slug();
     init_views();
     init_define();
     nodeFlag2 = external_exports.string().describe("Node ref, e.g. N3.");
-    indexFlag2 = external_exports.number().int().min(1).describe("Position of the message under the node, starting at 1.");
+    messageFlag = external_exports.string().min(1).describe("Id of the message, e.g. m-7f3a2c, as shown by rb message list.");
     rowsOf = (nodeId) => db.message.findMany({ where: { nodeId }, orderBy: { position: "asc" } });
     messageOps = [
       defineOp({
@@ -21295,18 +21316,24 @@ var init_messages = __esm({
       }),
       defineOp({
         name: "message.add",
-        summary: "Post a message under a node: a note, a question, a decision.",
+        summary: "Post a message under a node: a note, a question, a decision. Its id is given in the answer.",
         mutates: true,
         input: external_exports.strictObject({
           plan: planFlag,
           node: nodeFlag2,
           text: external_exports.string().trim().min(1).describe("The message."),
-          author: external_exports.string().trim().min(1).default("anonymous").describe("Who writes it: a name or an agent.")
+          author: external_exports.string().trim().min(1).default("anonymous").describe("Who writes it: a name or an agent."),
+          id: external_exports.string().regex(/^m-[a-z0-9-]{1,40}$/, "an id is m- followed by lowercase letters, digits or dashes").optional().describe("Id of the message, e.g. m-decision. A random one (m-7f3a2c) when omitted.")
         }),
-        run: async ({ plan, node: node2, text, author }) => {
+        run: async ({ plan, node: node2, text, author, id }) => {
           const found = await nodeOf(plan, node2);
-          const position = Math.max(0, ...(await rowsOf(found.node.id)).map((r) => r.position)) + 1;
-          await db.message.create({ data: { nodeId: found.node.id, position, author, text } });
+          const rows = await rowsOf(found.node.id);
+          const taken = new Set(rows.map((r) => r.handle));
+          if (id !== void 0 && taken.has(id)) throw new OpError(`${found.node.ref} already has a message "${id}".`, "conflict");
+          let handle = id ?? messageHandle();
+          while (taken.has(handle)) handle = messageHandle();
+          const position = Math.max(0, ...rows.map((r) => r.position)) + 1;
+          await db.message.create({ data: { nodeId: found.node.id, handle, position, author, text } });
           return loadNode(found.plan.slug, found.node.ref);
         }
       }),
@@ -21317,12 +21344,12 @@ var init_messages = __esm({
         input: external_exports.strictObject({
           plan: planFlag,
           node: nodeFlag2,
-          index: indexFlag2,
+          message: messageFlag,
           text: external_exports.string().trim().min(1).optional().describe("The message."),
           author: external_exports.string().trim().min(1).optional().describe("Who wrote it.")
         }),
-        run: async ({ plan, node: node2, index, ...data }) => {
-          const found = await messageAt(plan, node2, index);
+        run: async ({ plan, node: node2, message, ...data }) => {
+          const found = await messageWith(plan, node2, message);
           const edited = data.text !== void 0 && data.text !== found.row.text;
           await db.message.update({ where: { id: found.row.id }, data: { ...data, ...edited ? { editedAt: /* @__PURE__ */ new Date() } : {} } });
           return loadNode(found.plan.slug, found.node.ref);
@@ -21332,9 +21359,9 @@ var init_messages = __esm({
         name: "message.remove",
         summary: "Remove a message from a node.",
         mutates: true,
-        input: external_exports.strictObject({ plan: planFlag, node: nodeFlag2, index: indexFlag2 }),
-        run: async ({ plan, node: node2, index }) => {
-          const found = await messageAt(plan, node2, index);
+        input: external_exports.strictObject({ plan: planFlag, node: nodeFlag2, message: messageFlag }),
+        run: async ({ plan, node: node2, message }) => {
+          const found = await messageWith(plan, node2, message);
           await db.message.delete({ where: { id: found.row.id } });
           return loadNode(found.plan.slug, found.node.ref);
         }
@@ -21350,15 +21377,15 @@ function assertScale(s) {
   }
   if (s.gapPercent <= 0) throw new OpError("The gap must be above 0%.");
 }
-var slugify2, planOps;
+var planOps;
 var init_plan = __esm({
   "engine/src/ops/plan.ts"() {
     "use strict";
     init_zod();
     init_db();
+    init_slug();
     init_views();
     init_define();
-    slugify2 = (s) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
     planOps = [
       defineOp({
         name: "plan.list",
@@ -21649,20 +21676,18 @@ function renderNode(n) {
     `${n.ref}  ${n.title}  [${n.status}]`,
     `level ${num(n.level)}, ${gapText(n.gap)} from ${n.gap.from} (${num(n.gap.base)}), size ${n.size}/100`,
     ...n.description ? ["", n.description] : [],
-    ...list("Success criteria", n.criteria.map((c) => `${c.index}. ${box(c.met)} ${c.text}`)),
+    ...list("Success criteria", n.criteria.map((c) => `${box(c.met)} ${c.slug}: ${c.text}`)),
     ...list(
       "Requirements",
-      n.requirements.map(
-        (r) => `${r.index}. ${box(r.met)} ${r.text}${r.providedBy.length ? `  <- ${r.providedBy.join(", ")}` : ""}`
-      )
+      n.requirements.map((r) => `${box(r.met)} ${r.slug}: ${r.text}  <- ${r.providedBy}`)
     ),
     ...list("Requires (providers of its requirements)", n.dependsOn.length ? [n.dependsOn.join(", ")] : []),
     ...list("Enables", n.enables.length ? [n.enables.join(", ")] : []),
-    ...list("Resources", n.resources.map((r) => `${r.index}. ${r.kind}: ${r.name}, ${num(r.quantity)} ${r.unit}`)),
+    ...list("Resources", n.resources.map((r) => `${r.slug}: ${r.kind}, ${r.name}, ${num(r.quantity)} ${r.unit}`)),
     ...list("Messages", n.messages.map(messageLine))
   ].join("\n");
 }
-var messageLine = (m) => `${m.index}. ${m.author}, ${m.at.slice(0, 16).replace("T", " ")}${m.edited ? " (edited)" : ""}: ${m.text.replace(/\n/g, "\n     ")}`;
+var messageLine = (m) => `${m.id}  ${m.author}, ${m.at.slice(0, 16).replace("T", " ")}${m.edited ? " (edited)" : ""}: ${m.text.replace(/\n/g, "\n          ")}`;
 var renderMessages = (messages) => messages.length === 0 ? "No message." : messages.map(messageLine).join("\n");
 function renderPlan(p) {
   return [

@@ -160,22 +160,20 @@ function renderNode(n: NodeView): string {
     `${n.ref}  ${n.title}  [${n.status}]`,
     `level ${num(n.level)}, ${gapText(n.gap)} from ${n.gap.from} (${num(n.gap.base)}), size ${n.size}/100`,
     ...(n.description ? ["", n.description] : []),
-    ...list("Success criteria", n.criteria.map((c) => `${c.index}. ${box(c.met)} ${c.text}`)),
+    ...list("Success criteria", n.criteria.map((c) => `${box(c.met)} ${c.slug}: ${c.text}`)),
     ...list(
       "Requirements",
-      n.requirements.map(
-        (r) => `${r.index}. ${box(r.met)} ${r.text}${r.providedBy.length ? `  <- ${r.providedBy.join(", ")}` : ""}`,
-      ),
+      n.requirements.map((r) => `${box(r.met)} ${r.slug}: ${r.text}  <- ${r.providedBy}`),
     ),
     ...list("Requires (providers of its requirements)", n.dependsOn.length ? [n.dependsOn.join(", ")] : []),
     ...list("Enables", n.enables.length ? [n.enables.join(", ")] : []),
-    ...list("Resources", n.resources.map((r) => `${r.index}. ${r.kind}: ${r.name}, ${num(r.quantity)} ${r.unit}`)),
+    ...list("Resources", n.resources.map((r) => `${r.slug}: ${r.kind}, ${r.name}, ${num(r.quantity)} ${r.unit}`)),
     ...list("Messages", n.messages.map(messageLine)),
   ].join("\n")
 }
 
 const messageLine = (m: MessageView) =>
-  `${m.index}. ${m.author}, ${m.at.slice(0, 16).replace("T", " ")}${m.edited ? " (edited)" : ""}: ${m.text.replace(/\n/g, "\n     ")}`
+  `${m.id}  ${m.author}, ${m.at.slice(0, 16).replace("T", " ")}${m.edited ? " (edited)" : ""}: ${m.text.replace(/\n/g, "\n          ")}`
 
 const renderMessages = (messages: MessageView[]) =>
   messages.length === 0 ? "No message." : messages.map(messageLine).join("\n")

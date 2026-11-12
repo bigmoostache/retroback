@@ -33,7 +33,6 @@ interface SeedNode {
   title: string
   description: string
   criteria: string[]
-  requirements: string[]
   /** kind, name, quantity, unit */
   resources: [string, string, number, string][]
   status?: NodeStatus
@@ -74,7 +73,6 @@ const DEMO_NODES: SeedNode[] = [
       "Late deliveries stay under 2% of orders over 4 weeks.",
       "Customer satisfaction is 4.5 out of 5 or higher over 4 weeks.",
     ],
-    requirements: ["The second packing line runs 5 days a week."],
     resources: [
       ["human", "packer", 40, "person-days"],
       ["capital", "working capital for stock", 30000, "EUR"],
@@ -87,7 +85,6 @@ const DEMO_NODES: SeedNode[] = [
       "Line 2 packs 45 parcels per hour, measured over 5 days.",
       "Packing errors stay under 0.5% of parcels.",
     ],
-    requirements: ["Line 2 is installed and has passed its safety check."],
     resources: [
       ["machine", "packing line", 1, "unit"],
       ["human", "line operator", 20, "person-days"],
@@ -100,7 +97,6 @@ const DEMO_NODES: SeedNode[] = [
       "The carrier collects at 18:30 on 5 days out of 5, for 2 weeks.",
       "95% of orders placed before 16:00 ship the same day.",
     ],
-    requirements: ["The carrier contract covers the second pickup."],
     resources: [
       ["capital", "carrier fees", 2400, "EUR"],
       ["human", "logistics lead", 5, "person-days"],
@@ -113,7 +109,6 @@ const DEMO_NODES: SeedNode[] = [
       "Out-of-stock rate on the top 50 products stays under 1% over 14 days.",
       "The reorder alert fires at least 7 days before stock runs out.",
     ],
-    requirements: ["12 months of sales history are loaded in the forecast."],
     resources: [
       ["computing", "forecast job", 30, "CPU-hours"],
       ["human", "data analyst", 8, "person-days"],
@@ -126,7 +121,6 @@ const DEMO_NODES: SeedNode[] = [
       "Checkout completion reaches 68% (from 64%) over 10000 sessions.",
       "Median checkout time is under 90 seconds.",
     ],
-    requirements: ["The A/B test tool is wired to the checkout."],
     resources: [
       ["human", "frontend engineer", 12, "person-days"],
       ["human", "designer", 4, "person-days"],
@@ -140,7 +134,6 @@ const DEMO_NODES: SeedNode[] = [
       "The email is sent within 60 minutes for 99% of abandoned carts.",
       "8% of the emailed carts are recovered over 3 weeks.",
     ],
-    requirements: ["Email consent is recorded for each customer."],
     resources: [
       ["human", "CRM specialist", 6, "person-days"],
       ["capital", "email platform", 300, "EUR"],
@@ -153,7 +146,6 @@ const DEMO_NODES: SeedNode[] = [
       "95th percentile load time on mobile is under 2.0 s over 7 days.",
       "Bounce rate on product pages is under 35%.",
     ],
-    requirements: ["The image CDN contract is active."],
     resources: [
       ["human", "backend engineer", 10, "person-days"],
       ["computing", "CDN traffic", 500, "GB"],
@@ -166,7 +158,6 @@ const DEMO_NODES: SeedNode[] = [
       "Cost per order is under 6 EUR over 2 weeks.",
       "At least 10 extra orders a week are attributed to the campaign.",
     ],
-    requirements: ["Orders are tracked by campaign."],
     resources: [
       ["capital", "ad budget", 4000, "EUR"],
       ["human", "marketing manager", 6, "person-days"],
@@ -179,7 +170,6 @@ const DEMO_NODES: SeedNode[] = [
       "100% of orders carry a channel tag, 7 days in a row.",
       "The weekly report is delivered every Monday before 10:00.",
     ],
-    requirements: ["The team has access to the analytics."],
     resources: [
       ["human", "data analyst", 5, "person-days"],
       ["computing", "analytics warehouse", 20, "CPU-hours"],
@@ -192,7 +182,6 @@ const DEMO_NODES: SeedNode[] = [
       "90% of returns are refunded within 48 hours over 3 weeks.",
       "The repeat order rate at 30 days rises to 22%.",
     ],
-    requirements: ["The returns desk is staffed 5 days a week."],
     resources: [
       ["human", "support agent", 15, "person-days"],
       ["space", "returns desk area", 12, "m2"],
@@ -205,7 +194,6 @@ const DEMO_NODES: SeedNode[] = [
       "50 of 50 product pages have 4 photos or more.",
       "50 of 50 product pages have a description of 120 words or more.",
     ],
-    requirements: ["The photo studio is booked."],
     resources: [
       ["human", "photographer", 3, "person-days"],
       ["machine", "photo studio", 2, "days"],
@@ -220,7 +208,6 @@ const DEMO_NODES: SeedNode[] = [
       "Weekly orders are measured the same way 3 weeks in a row.",
       "The dashboard is opened by 8 of 8 team leads in one week.",
     ],
-    requirements: ["The order export from the back office is available."],
     resources: [["human", "operations lead", 2, "person-days"]],
     status: "done",
   },
@@ -266,7 +253,6 @@ const GROWTH_ROOT: SeedNode = {
   title: "1050 paying customers",
   description: "The target: 5% more paying customers than today, with churn under control.",
   criteria: ["Net revenue retention is 102% or more over the quarter.", "Gross margin stays above 70%."],
-  requirements: ["Billing handles 1100 active subscriptions without manual work."],
   resources: [["human", "revenue operations lead", 10, "person-days"]],
   messages: [
     ["guillaume", "Three ways to get there: trials, outbound, keeping who we have. Which one first?"],
@@ -278,7 +264,6 @@ const GROWTH_ROOT: SeedNode = {
       title: "Free trial converts at 25%",
       description: "Product-led: more trial users become paying customers on their own.",
       criteria: ["25% of trials started in a month convert within 30 days.", "Median time to first value is under 10 minutes."],
-      requirements: ["The trial can be started without talking to sales."],
       resources: [["human", "product manager", 15, "person-days"]],
       before: [
         {
@@ -286,7 +271,6 @@ const GROWTH_ROOT: SeedNode = {
           title: "Guided onboarding live",
           description: "New users are walked to the first useful result.",
           criteria: ["70% of new users finish the 4 onboarding steps.", "Support tickets from new users drop by 30%."],
-          requirements: ["The activation event is tracked."],
           resources: [
             ["human", "frontend engineer", 15, "person-days"],
             ["human", "designer", 5, "person-days"],
@@ -300,7 +284,6 @@ const GROWTH_ROOT: SeedNode = {
                 "The event predicts conversion with 0.7 correlation or more on 6 months of data.",
                 "100% of new accounts report the event within 1 hour.",
               ],
-              requirements: ["Product analytics collects events from the app."],
               resources: [["human", "data analyst", 6, "person-days"]],
               before: [
                 {
@@ -308,7 +291,6 @@ const GROWTH_ROOT: SeedNode = {
                   title: "Product analytics SDK installed",
                   description: "The app sends usage events to one place.",
                   criteria: ["20 key events are sent from web and mobile.", "Event loss is under 1% over 7 days."],
-                  requirements: ["The privacy review approves the event list."],
                   resources: [
                     ["human", "backend engineer", 5, "person-days"],
                     ["capital", "analytics licence", 6000, "EUR"],
@@ -320,7 +302,6 @@ const GROWTH_ROOT: SeedNode = {
                   title: "Signup funnel mapped",
                   description: "Know where people drop between the landing page and the first login.",
                   criteria: ["Drop-off is measured at 6 steps of the funnel.", "The 3 largest drops are named and sized."],
-                  requirements: ["Access to the website analytics."],
                   resources: [["human", "growth marketer", 4, "person-days"]],
                   status: "doing",
                   messages: [["agent-1", "The biggest drop so far is email confirmation: 31% never click."]],
@@ -334,7 +315,6 @@ const GROWTH_ROOT: SeedNode = {
           title: "New pricing page live",
           description: "Clear tiers, a price that matches what users are willing to pay.",
           criteria: ["Visit-to-trial rate on the pricing page reaches 6%.", "3 tiers at most, each with 5 lines or fewer."],
-          requirements: ["The price test has a winner."],
           resources: [
             ["human", "designer", 4, "person-days"],
             ["human", "copywriter", 2, "person-days"],
@@ -345,7 +325,6 @@ const GROWTH_ROOT: SeedNode = {
               title: "Price test on 2 tiers",
               description: "Two prices shown to new visitors, the winner kept.",
               criteria: ["2000 visitors or more see each price.", "The winner's revenue per visitor is 10% higher or more."],
-              requirements: ["The survey gives a price range."],
               resources: [["computing", "A/B test platform", 1, "months"]],
               before: [
                 {
@@ -353,7 +332,6 @@ const GROWTH_ROOT: SeedNode = {
                   title: "Willingness-to-pay survey of 200 users",
                   description: "Ask before testing: what price feels too cheap, too expensive.",
                   criteria: ["200 answers or more from active users.", "A price range is set with 4 price points."],
-                  requirements: ["The user list can be emailed."],
                   resources: [
                     ["capital", "survey incentives", 1000, "EUR"],
                     ["human", "product manager", 3, "person-days"],
@@ -371,7 +349,6 @@ const GROWTH_ROOT: SeedNode = {
       title: "Outbound team books 40 demos a month",
       description: "Sales-led: reach companies that would not find the product alone.",
       criteria: ["40 demos booked a month, 2 months in a row.", "20% of demos become paying customers."],
-      requirements: ["The account executives are ramped."],
       resources: [["capital", "sales tools", 400, "EUR per month"]],
       before: [
         {
@@ -379,7 +356,6 @@ const GROWTH_ROOT: SeedNode = {
           title: "2 account executives ramped",
           description: "Two sellers able to close on their own.",
           criteria: ["Each closes 3 deals or more in their 3rd month.", "Both pass the demo certification with 80% or more."],
-          requirements: ["The sales playbook is written."],
           resources: [
             ["human", "account executive", 2, "people"],
             ["capital", "salaries for 3 months", 45000, "EUR"],
@@ -390,7 +366,6 @@ const GROWTH_ROOT: SeedNode = {
               title: "Sales playbook written",
               description: "Who to call, what to say, how to answer the 10 usual objections.",
               criteria: ["The playbook covers 10 objections with tested answers.", "5 recorded calls are annotated."],
-              requirements: ["The ideal customer profile is defined."],
               resources: [["human", "head of sales", 8, "person-days"]],
               before: [
                 {
@@ -398,7 +373,6 @@ const GROWTH_ROOT: SeedNode = {
                   title: "Hiring pipeline open",
                   description: "Find the account executives before they are needed.",
                   criteria: ["30 candidates screened in 4 weeks.", "2 offers signed by week 6."],
-                  requirements: ["The budget for 2 hires is approved."],
                   resources: [
                     ["capital", "recruiter fee", 12000, "EUR"],
                     ["human", "hiring manager", 6, "person-days"],
@@ -409,7 +383,6 @@ const GROWTH_ROOT: SeedNode = {
                   title: "Ideal customer profile defined",
                   description: "Which companies buy fastest and stay longest.",
                   criteria: ["The profile is drawn from 100 current customers.", "500 matching companies are listed."],
-                  requirements: ["Access to the CRM export."],
                   resources: [["human", "data analyst", 3, "person-days"]],
                   status: "done",
                 },
@@ -424,7 +397,6 @@ const GROWTH_ROOT: SeedNode = {
       title: "Monthly churn under 2%",
       description: "Retention: keep the customers already won.",
       criteria: ["Logo churn is under 2% for 3 months in a row.", "Exit surveys are answered by 50% of leavers."],
-      requirements: ["Accounts at risk are flagged and answered quickly."],
       resources: [["human", "customer success manager", 20, "person-days"]],
       before: [
         {
@@ -432,7 +404,6 @@ const GROWTH_ROOT: SeedNode = {
           title: "Customer health score live",
           description: "A score that flags accounts likely to leave, early enough to act.",
           criteria: ["The score flags 70% of churned accounts 30 days ahead.", "It is refreshed every 24 hours."],
-          requirements: ["Usage data is in the warehouse."],
           resources: [["computing", "scoring job", 40, "CPU-hours"]],
           before: [
             {
@@ -440,7 +411,6 @@ const GROWTH_ROOT: SeedNode = {
               title: "Usage data in the warehouse",
               description: "Product usage and billing joined per account.",
               criteria: ["100% of accounts have 12 months of usage history.", "Data is less than 24 hours old."],
-              requirements: ["A data engineer owns the pipeline."],
               resources: [["computing", "data warehouse", 300, "EUR per month"]],
               before: [
                 {
@@ -448,7 +418,6 @@ const GROWTH_ROOT: SeedNode = {
                   title: "Data engineer hired",
                   description: "Someone to build and run the data pipelines.",
                   criteria: ["1 offer signed within 8 weeks.", "The pipeline backlog is estimated in week 2."],
-                  requirements: ["The role is approved in the budget."],
                   resources: [["capital", "salary for 6 months", 40000, "EUR"]],
                 },
               ],
@@ -460,7 +429,6 @@ const GROWTH_ROOT: SeedNode = {
           title: "Support answers in 4 hours",
           description: "Slow answers are the first reason given in exit surveys.",
           criteria: ["90% of tickets get a first answer within 4 hours.", "Satisfaction on tickets is 4.5 out of 5 or more."],
-          requirements: ["A help desk tool routes the tickets."],
           resources: [["human", "support agent", 30, "person-days"]],
           before: [
             {
@@ -468,7 +436,6 @@ const GROWTH_ROOT: SeedNode = {
               title: "Help desk tool deployed",
               description: "Tickets in one queue, with timers and routing.",
               criteria: ["100% of support emails land in the tool.", "5 answer templates cover 60% of tickets."],
-              requirements: ["A support rota is staffed."],
               resources: [["capital", "help desk licence", 150, "EUR per month"]],
               before: [
                 {
@@ -476,7 +443,6 @@ const GROWTH_ROOT: SeedNode = {
                   title: "Support rota of 3 people",
                   description: "Someone is always on the queue during business hours.",
                   criteria: ["3 people share the rota, 5 days a week.", "No gap longer than 1 hour in 2 weeks."],
-                  requirements: ["Team leads agree on the hours."],
                   resources: [["human", "support agent", 3, "people"]],
                   status: "doing",
                 },
@@ -537,11 +503,10 @@ async function build(seed: SeedPlan): Promise<boolean> {
       ...(later ? { enables: [later] } : {}),
       size: node.size ?? fakeSize(node.title),
       criterion: node.criteria,
-      requirement: node.requirements,
     })
     if (node.key) refs.set(node.key, created.ref)
     const at = { ...plan, node: created.ref }
-    await run("criterion.add", { ...at, text: seed.levelCriterion(created.level, later === null) })
+    const withLevel = await run<NodeView>("criterion.add", { ...at, text: seed.levelCriterion(created.level, later === null) })
     for (const [kind, name, quantity, unit] of node.resources) {
       await run("resource.add", { ...at, kind, name, quantity, unit })
     }
@@ -549,10 +514,9 @@ async function build(seed: SeedPlan): Promise<boolean> {
     for (const before of node.before ?? []) queue.push([before, created.ref])
     if (!node.status) continue
     await run("node.update", { ...plan, ref: created.ref, status: node.status })
-    await run("requirement.update", { ...at, index: 1, met: true })
     // A node under way has met its first criterion; a done node has met them all.
-    const met = node.status === "done" ? node.criteria.length + 1 : 1
-    for (let index = 1; index <= met; index++) await run("criterion.update", { ...at, index, met: true })
+    const met = node.status === "done" ? withLevel.criteria : withLevel.criteria.slice(0, 1)
+    for (const c of met) await run("criterion.update", { ...at, criterion: c.slug, met: true })
   }
 
   const refOf = (key: string) => {
@@ -562,7 +526,7 @@ async function build(seed: SeedPlan): Promise<boolean> {
   }
   for (const [node, on] of seed.extraDeps) {
     const former = await run<NodeView>("node.show", { ...plan, ref: refOf(on) })
-    await run("requirement.add", { ...plan, node: refOf(node), text: former.title, providedBy: [former.ref] })
+    await run("requirement.add", { ...plan, node: refOf(node), text: former.title, providedBy: former.ref })
   }
 
   const check = await run<CheckView>("plan.check", plan)

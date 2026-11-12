@@ -47,7 +47,7 @@ export async function loadPlan(slug?: string): Promise<PlanView> {
         orderBy: { seq: "asc" },
         include: {
           criteria: byPosition,
-          requirements: { ...byPosition, include: { providers: { include: { node: { select: { ref: true, seq: true } } } } } },
+          requirements: { ...byPosition, include: { provider: { select: { ref: true } } } },
           resources: byPosition,
           messages: byPosition,
         },
@@ -57,10 +57,8 @@ export async function loadPlan(slug?: string): Promise<PlanView> {
 
   const byRef = new Map(plan.nodes.map((n) => [n.ref, n]))
   const bySeq = (a: string, b: string) => byRef.get(a)!.seq - byRef.get(b)!.seq
-  const providersOf = (r: (typeof plan.nodes)[number]["requirements"][number]) =>
-    r.providers.map((p) => p.node.ref).sort(bySeq)
   const prereqs = new Map(
-    plan.nodes.map((n) => [n.ref, [...new Set(n.requirements.flatMap(providersOf))].sort(bySeq)] as const),
+    plan.nodes.map((n) => [n.ref, [...new Set(n.requirements.map((r) => r.provider.ref))].sort(bySeq)] as const),
   )
   const enables = new Map<string, string[]>(plan.nodes.map((n) => [n.ref, []]))
   for (const [later, formers] of prereqs) for (const former of formers) enables.get(former)!.push(later)
@@ -76,14 +74,15 @@ export async function loadPlan(slug?: string): Promise<PlanView> {
       level: n.level,
       status: n.status,
       size: n.size,
-      criteria: n.criteria.map((c, i) => ({ index: i + 1, text: c.text, met: c.met })),
-      requirements: n.requirements.map((r, i) => {
-        const providedBy = providersOf(r)
-        const met = providedBy.length ? providedBy.every((ref) => byRef.get(ref)!.status === "done") : r.met
-        return { index: i + 1, text: r.text, met, providedBy }
-      }),
-      resources: n.resources.map((r, i) => ({
-        index: i + 1,
+      criteria: n.criteria.map((c) => ({ slug: c.slug, text: c.text, met: c.met })),
+      requirements: n.requirements.map((r) => ({
+        slug: r.slug,
+        text: r.text,
+        met: byRef.get(r.provider.ref)!.status === "done",
+        providedBy: r.provider.ref,
+      })),
+      resources: n.resources.map((r) => ({
+        slug: r.slug,
         kind: r.kind,
         name: r.name,
         quantity: r.quantity,
@@ -92,8 +91,8 @@ export async function loadPlan(slug?: string): Promise<PlanView> {
       dependsOn: deps.map((d) => d.ref),
       enables: enables.get(n.ref)!.sort(bySeq),
       gap: computeGap(n.level, deps, plan),
-      messages: n.messages.map((m, i) => ({
-        index: i + 1,
+      messages: n.messages.map((m) => ({
+        id: m.handle,
         author: m.author,
         text: m.text,
         at: m.createdAt.toISOString(),
