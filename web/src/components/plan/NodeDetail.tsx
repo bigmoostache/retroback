@@ -1,10 +1,11 @@
 import type { ReactNode } from "react"
-import { Check, LockOpen, PanelLeftClose, Pencil, Plus, Trash2, X } from "lucide-react"
+import { Check, LockOpen, PanelRightClose, Pencil, Plus, Trash2, X } from "lucide-react"
 import { unlock, unlockSize } from "@engine/graph.ts"
 import type { CheckItem, NodeStatus, NodeView, PlanGraph } from "@engine/types.ts"
 import { CommandHint } from "@/components/ops/CommandLine"
 import { StatusBadge } from "@/components/plan/StatusBadge"
 import { SelectionPill } from "@/components/shell/chrome/SelectionPill"
+import { DrawerClose, DrawerTitle } from "@/components/ui/drawer"
 import { IconAction } from "@/components/ui/IconAction"
 import { toCommand } from "@/lib/api"
 import { dayText, gapText, num } from "@/lib/format"
@@ -175,7 +176,6 @@ export function NodeDetail({
   onSelect,
   unlockOf,
   onUnlock,
-  onClose,
 }: {
   node: NodeView
   plan: PlanGraph
@@ -184,8 +184,6 @@ export function NodeDetail({
   onSelect: (ref: string) => void
   unlockOf: string | null
   onUnlock: (ref: string | null) => void
-  /** Closes the drawer; selecting a node opens it again. */
-  onClose: () => void
 }) {
   const titles = new Map(plan.nodes.map((n) => [n.ref, n.title]))
   const titleOf = (ref: string) => titles.get(ref) ?? ""
@@ -205,15 +203,12 @@ export function NodeDetail({
   )
 
   return (
-    <aside
-      data-node-drawer
-      className="card-shadow flex w-96 shrink-0 flex-col overflow-hidden rounded-2xl bg-surface-2"
-    >
+    <div data-node-detail className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">
         <header className="flex flex-col gap-2">
           <div className="flex items-start gap-2">
             <code className="mt-1 shrink-0 font-mono text-subhead text-muted-foreground">{node.ref}</code>
-            <h2 className="min-w-0 flex-1 text-title3 font-semibold tracking-tight text-foreground">{node.title}</h2>
+            <DrawerTitle className="min-w-0 flex-1">{node.title}</DrawerTitle>
             <IconAction label="Edit the node" command="rb node update" icon={Pencil} onClick={() => ask(nodeUpdate(node))} />
             <IconAction
               label="Delete the node"
@@ -221,16 +216,14 @@ export function NodeDetail({
               icon={Trash2}
               onClick={() => ask(nodeDelete(node))}
             />
-            <button
-              type="button"
+            <DrawerClose
               aria-label="Close the node"
-              title="Close"
+              title="Close (Esc)"
               data-drawer-close
-              onClick={onClose}
               className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
-              <PanelLeftClose className="size-4" />
-            </button>
+              <PanelRightClose className="size-4" />
+            </DrawerClose>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex min-w-0 flex-col font-mono text-subhead tabular-nums">
@@ -464,6 +457,6 @@ export function NodeDetail({
 
         <CommandHint command={toCommand("node.show", { plan: node.plan, ref: node.ref })} />
       </div>
-    </aside>
+    </div>
   )
 }
