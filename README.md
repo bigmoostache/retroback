@@ -60,6 +60,21 @@ Nothing is addressed by its position: criteria, requirements and resources by
 a slug unique in their node (`--criterion`, `--requirement`, `--resource`),
 messages by their id (`--message m-7f3a2c`). `rb node show` lists them.
 
+## Event log
+
+Every operation that changes data, from `rb`, the API or the web app, is
+written to an append-only log, whether it succeeded or not: who, when, through
+what, the input, the outcome. The database refuses any update, deletion or
+truncation of the log.
+
+```sh
+rb event list --plan growth --last 20          # who did what, and when
+rb event replay --plan growth --as growth-then --up-to 250   # the plan as it was at event 250
+```
+
+A replay builds a new plan from the successful events of the original,
+including a plan that has since been deleted.
+
 ## Layout
 
 - `engine/`: Prisma schema, operations (`src/ops`), CLI (`src/cli.ts`), API (`src/server.ts`), seed, isometry check

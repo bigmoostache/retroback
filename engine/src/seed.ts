@@ -21,7 +21,7 @@ let count = 0
 async function run<T>(op: string, input: Record<string, unknown> = {}): Promise<T> {
   const command = toCommand(op, input)
   if (verbose) console.log(command)
-  const response = await runOp(op, input)
+  const response = await runOp(op, input, { actor: "seed", via: "seed" })
   if (!response.ok) throw new Error(`${command}\n  ${response.error.message}`)
   count++
   return response.result as T

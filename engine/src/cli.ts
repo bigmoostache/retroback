@@ -15,7 +15,19 @@
  * Exit code: 0 on success, 1 on error, 3 when `plan check` finds an error.
  */
 import { camel, kebab } from "./flags.ts"
-import type { CheckView, Gap, MessageView, NodeView, OpInfo, OpResponse, PlanSummary, PlanView, UnlockView } from "./types.ts"
+import type {
+  CheckView,
+  EventView,
+  Gap,
+  MessageView,
+  NodeView,
+  OpInfo,
+  OpResponse,
+  PlanSummary,
+  PlanView,
+  ReplayView,
+  UnlockView,
+} from "./types.ts"
 
 /** Where operations run: in this process on the database, or on a remote engine API. */
 interface Backend {
@@ -27,7 +39,8 @@ interface Backend {
 async function localBackend(): Promise<Backend> {
   // Loaded only here, so remote mode needs neither the database nor its client.
   const [{ db }, { opInfos, runOp }] = await Promise.all([import("./db.ts"), import("./ops/index.ts")])
-  return { infos: async () => opInfos(), run: runOp, close: () => db.$disconnect() }
+  const ctx = { actor: process.env.USER || "local", via: "cli" }
+  return { infos: async () => opInfos(), run: (name, input) => runOp(name, input, ctx), close: () => db.$disconnect() }
 }
 
 class Unreachable extends Error {}
@@ -238,6 +251,27 @@ function renderOpHelp(info: OpInfo): string {
 /** Picks the rendering from the shape of the operation's result. */
 function render(name: string, result: unknown): string {
   if (name === "message.list") return renderMessages(result as MessageView[])
+  if (name === "event.list") {
+    const events = result as EventView[]
+    if (events.length === 0) return "No event."
+    return table([
+      ["SEQ", "AT", "ACTOR", "VIA", "OP", "PLAN", "RESULT"],
+      ...events.map((e) => [
+        String(e.seq),
+        e.at.slice(0, 19).replace("T", " "),
+        e.actor,
+        e.via,
+        e.op,
+        e.plan ?? "",
+        e.ok ? "ok" : (e.error ?? "error"),
+      ]),
+    ])
+  }
+  if (name === "event.replay") {
+    const r = result as ReplayView
+    const head = `Replayed ${r.replayed} events of "${r.from}" into "${r.as}", up to event ${r.upTo}.`
+    return r.plan ? [head, "", renderPlan(r.plan)].join("\n") : `${head}\nThe history ends with the plan deleted.`
+  }
   if (name === "node.unlock") {
     const u = result as UnlockView
     if (u.nodes.length === 0) return `Nothing to unlock: ${u.target} is done.`

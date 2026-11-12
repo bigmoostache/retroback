@@ -17,6 +17,7 @@ import { opInfos, runOp } from "./ops/index.ts"
 import type { CheckView, OpResponse, PlanSummary } from "./types.ts"
 
 const PLAN = "isometry-check"
+const REPLAY = "isometry-replay"
 const API = `http://127.0.0.1:${API_PORT}`
 const RB = path.resolve(import.meta.dirname, "../../bin/rb")
 /** HTTP status of each error code (see server.ts). */
@@ -90,6 +91,12 @@ const STEPS: Step[] = [
   // Half the gap: the steps are now too large, so the check must fail on both sides.
   ["plan.update", { ...plan, gapPercent: 0.5 }],
   ["plan.check", plan],
+  // The log of this run, then the plan rebuilt from it as it is now.
+  ["event.list", { ...plan, last: 3 }],
+  ["event.replay", { ...plan, as: REPLAY }],
+  ["event.replay", { ...plan, as: REPLAY }, "conflict"],
+  ["event.replay", { plan: "never-existed", as: "nope" }, "not_found"],
+  ["plan.delete", { plan: REPLAY }],
   ["plan.delete", plan],
   ["plan.show", plan, "not_found"],
 ]
@@ -135,13 +142,20 @@ const viaApi: Via = async (op, input) => {
 
 const outcome = (r: OpResponse<unknown>) => (r.ok ? "ok" : r.error.code)
 
-/** The two runs happen at different times: message timestamps are compared as present, not by value. */
+/**
+ * The runs happen at different times and through different entry points:
+ * timestamps, log sequence numbers and who/through what are compared as present, not by value.
+ */
+const VARYING = new Set(["at", "seq", "upTo", "actor", "via"])
 const timeless = (value: unknown): unknown =>
   Array.isArray(value)
     ? value.map(timeless)
     : value && typeof value === "object"
       ? Object.fromEntries(
-          Object.entries(value).map(([k, v]) => [k, k === "at" && typeof v === "string" ? "<time>" : timeless(v)]),
+          Object.entries(value).map(([k, v]) => [
+            k,
+            VARYING.has(k) && (typeof v === "string" || typeof v === "number") ? `<${k}>` : timeless(v),
+          ]),
         )
       : value
 
@@ -153,10 +167,13 @@ function exitFor(op: string, r: OpResponse<unknown>) {
 
 const statusFor = (r: OpResponse<unknown>) => (r.ok ? 200 : (STATUS[r.error.code] ?? 400))
 
-/** Removes the throwaway plan, whatever state a run left it in. */
+/** Removes the throwaway plans, whatever state a run left them in. */
 async function reset() {
   const plans = await runOp("plan.list")
-  if (plans.ok && (plans.result as PlanSummary[]).some((p) => p.slug === PLAN)) await runOp("plan.delete", plan)
+  if (!plans.ok) return
+  for (const slug of [PLAN, REPLAY]) {
+    if ((plans.result as PlanSummary[]).some((p) => p.slug === slug)) await runOp("plan.delete", { plan: slug })
+  }
 }
 
 async function play(via: Via): Promise<Answer[]> {

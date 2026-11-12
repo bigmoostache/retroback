@@ -121,6 +121,32 @@ export interface PlanView extends PlanSummary {
   check: CheckView
 }
 
+/** One entry of the event log. */
+export interface EventView {
+  seq: number
+  /** ISO 8601. */
+  at: string
+  actor: string
+  /** cli, api, seed, replay... */
+  via: string
+  op: string
+  plan: string | null
+  input: Record<string, unknown>
+  ok: boolean
+  error: string | null
+}
+
+/** What `event replay` answers. */
+export interface ReplayView {
+  from: string
+  as: string
+  replayed: number
+  /** Last sequence number replayed. */
+  upTo: number
+  /** The rebuilt plan; null when the history ends with its deletion. */
+  plan: PlanView | null
+}
+
 export interface OpInfo {
   name: string
   summary: string

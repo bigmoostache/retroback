@@ -74,7 +74,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     return respond(res, await runOp("op.list"))
   }
   if (req.method !== "POST") throw new RequestError(405, `Use POST /api/${name} with the input as a JSON body.`)
-  respond(res, await runOp(name, await readInput(req)))
+  respond(res, await runOp(name, await readInput(req), { actor: "anonymous", via: "api" }))
 }
 
 const server = createServer((req, res) => {
