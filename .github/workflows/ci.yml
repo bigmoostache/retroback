@@ -53,6 +53,8 @@ jobs:
         run: |
           pnpm build:cli
           git diff --exit-code --stat dist/rb.mjs || { echo "dist/rb.mjs is stale: run pnpm build:cli and commit it."; exit 1; }
+          # The bundle must start under plain node, without tsx.
+          RB_NO_UPDATE=1 node dist/rb.mjs config
       - name: API log
         if: failure()
         run: cat api.log || true

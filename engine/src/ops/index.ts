@@ -17,6 +17,7 @@ import { messageOps } from "./messages.ts"
 import { nodeOps } from "./node.ts"
 import { peopleOps } from "./people.ts"
 import { planOps } from "./plan.ts"
+import { sqlOps } from "./sql.ts"
 
 export type { Ctx }
 
@@ -44,7 +45,7 @@ const describe = (op: Op): OpInfo => ({
   cli: usage(op),
 })
 
-const domainOps: Op[] = [...planOps, ...nodeOps, ...itemOps, ...messageOps, ...peopleOps]
+const domainOps: Op[] = [...planOps, ...nodeOps, ...itemOps, ...messageOps, ...peopleOps, ...sqlOps]
 
 const BATCH = "batch.apply"
 const MAX_STEPS = 500

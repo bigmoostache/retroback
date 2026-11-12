@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { createRequire as __rbCreateRequire } from "node:module";
+const require = __rbCreateRequire(import.meta.url);
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -7658,6 +7660,16 @@ function renderTree(t) {
   lines.push("", `${t.shown} node${t.shown === 1 ? "" : "s"}, depth ${t.depth}. Deeper: rb node tree --ref ${t.root.ref} --depth ${t.depth + 1}`);
   return lines.join("\n");
 }
+function renderCsv(r) {
+  const cell = (v) => {
+    if (v === null) return "";
+    const s = String(v);
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [r.columns.map(cell).join(","), ...r.rows.map((row) => row.map(cell).join(","))];
+  if (r.cut) lines.push(`# cut at ${r.rows.length} rows: add a LIMIT/OFFSET or a WHERE`);
+  return lines.join("\n");
+}
 var NODE_MESSAGES = 5;
 function renderNode(n) {
   const list = (title, lines) => [``, title, ...lines.length ? lines.map((l) => `  ${l}`) : ["  (none)"]];
@@ -7838,6 +7850,7 @@ The history ends with the plan deleted.`;
     return [`To reach ${u.target}, tackle now:`, renderNodes(u.nodes), "", `Size left: ${u.size} (heaviest path, perfect parallelism)`].join("\n");
   }
   if (name === "node.tree") return renderTree(result);
+  if (name === "sql.query") return renderCsv(result);
   if (name === "batch.apply") {
     const b = result;
     const created = Object.entries(b.created).map(([k, v]) => `  ${k} = ${v}`);
@@ -7963,6 +7976,9 @@ async function runCli(argv, json, backend, fail, defaultPlan) {
     if (!response2.ok) return fail(response2.error.code, response2.error.message);
     console.log(json ? JSON.stringify(response2, null, 2) : render("batch.apply", response2.result));
     return 0;
+  }
+  if (args[0] === "sql" && args[1] !== void 0 && !args[1].startsWith("-") && args[1] !== "query") {
+    args.splice(0, 2, "sql", "query", "--query", args[1]);
   }
   const words = [];
   while (words.length < 2 && args[0] !== void 0 && !args[0].startsWith("-")) words.push(args.shift());

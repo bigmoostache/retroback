@@ -183,6 +183,15 @@ export interface TreeView {
   shown: number
 }
 
+/** What `sql.query` answers: `rb sql` prints it as CSV. */
+export interface SqlView {
+  plan: string
+  columns: string[]
+  rows: (string | number | null)[][]
+  /** True when more rows matched than were returned. */
+  cut: boolean
+}
+
 /** What `node unlock` answers. */
 export interface UnlockView {
   /** The node to reach. */
