@@ -60,4 +60,4 @@ rb message add --node N2 --text 'Who owns this?'
 
 - `engine/`: Prisma schema, operations (`src/ops`), CLI (`src/cli.ts`), API (`src/server.ts`), seed, isometry check
 - `web/`: Vite + React web app
-- `scripts/build-cli.mjs`: bundles `rb` into `dist/rb.mjs` (run on `npm install`)
+- `scripts/build-cli.mjs`: bundles `rb` into `dist/rb.mjs`, committed so the npm install needs no build

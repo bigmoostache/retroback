@@ -1,6 +1,6 @@
 // Builds the `rb` command into dist/rb.mjs: one file, run by plain node.
-// Runs on `npm install <repo>` (the "prepare" script), so it may only use the
-// root package's own dependencies.
+// dist/rb.mjs is committed, so `npm install -g github:...` needs no build. CI
+// rebuilds it and fails when the committed file is stale.
 import { execFileSync } from "node:child_process"
 import { chmodSync, existsSync } from "node:fs"
 import path from "node:path"

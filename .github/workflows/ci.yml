@@ -49,8 +49,10 @@ jobs:
         run: pnpm seed
       - name: Build the web app
         run: pnpm --filter web build
-      - name: Build the CLI
-        run: pnpm build:cli
+      - name: Build the CLI (the committed dist/rb.mjs must be up to date)
+        run: |
+          pnpm build:cli
+          git diff --exit-code --stat dist/rb.mjs || { echo "dist/rb.mjs is stale: run pnpm build:cli and commit it."; exit 1; }
       - name: API log
         if: failure()
         run: cat api.log || true
