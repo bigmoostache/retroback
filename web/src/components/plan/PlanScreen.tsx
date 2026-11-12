@@ -34,6 +34,7 @@ export function PlanScreen({ engine, ask }: { engine: Engine; ask: Ask }) {
   const showUnlock = (ref: string | null) => {
     if (ref) {
       setSelected(ref)
+      setDrawerOpen(true)
       setLayout("graph")
       localStorage.setItem(LAYOUT_KEY, "graph")
     }
@@ -44,6 +45,16 @@ export function PlanScreen({ engine, ask }: { engine: Engine; ask: Ask }) {
   )
   const selectedRef = (selected && plan?.nodes.some((n) => n.ref === selected) ? selected : plan?.nodes[0]?.ref) ?? null
   const node = useNode(plan?.slug ?? null, selectedRef, engine.version)
+  // The drawer: open until closed, opened again by selecting a node.
+  const [drawerOpen, setDrawerOpen] = useState(true)
+  const select = (ref: string) => {
+    setSelected(ref)
+    setDrawerOpen(true)
+  }
+  // While the next node loads, the drawer keeps the last one: no jump in width.
+  const [shownNode, setShownNode] = useState(node)
+  if (node && node !== shownNode) setShownNode(node)
+  const drawer = shownNode && shownNode.plan === plan?.slug ? shownNode : null
   // With no node yet there is nothing to draw: the list shows how to create the target.
   const hasNodes = (plan?.nodes.length ?? 0) > 0
   const tools = hasNodes ? (
@@ -107,52 +118,37 @@ export function PlanScreen({ engine, ask }: { engine: Engine; ask: Ask }) {
               onClick={() => ask(planDelete(plan))}
             />
           </header>
-          {layout === "graph" && hasNodes ? (
-            // The graph runs across the whole width; the rest sits under it.
-            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-6 pb-4">
+          {/* The node opens in a drawer on the left; the graph or the list takes the rest. */}
+          <div className="flex min-h-0 flex-1 flex-row gap-4 overflow-hidden px-6 pb-4">
+            {drawer && drawerOpen && (
+              <NodeDetail
+                node={drawer}
+                plan={plan}
+                run={run}
+                ask={ask}
+                onSelect={select}
+                unlockOf={unlockOf}
+                onUnlock={showUnlock}
+                onClose={() => setDrawerOpen(false)}
+              />
+            )}
+            {layout === "graph" && hasNodes ? (
               <NodeGraph
                 key={plan.slug}
                 plan={plan}
                 selected={selectedRef}
-                onSelect={setSelected}
+                onSelect={select}
                 ask={ask}
                 tools={tools}
                 unlockOf={unlockOf}
                 onUnlock={showUnlock}
               />
-              <div className="-m-1 flex min-h-0 flex-1 flex-row gap-4 overflow-hidden p-1">
-                {node && (
-                  <NodeDetail
-                    node={node}
-                    plan={plan}
-                    run={run}
-                    ask={ask}
-                    onSelect={setSelected}
-                    unlockOf={unlockOf}
-                    onUnlock={showUnlock}
-                    wide
-                  />
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="flex min-h-0 flex-1 flex-row gap-4 overflow-hidden px-6 pb-4">
+            ) : (
               <div className="-m-1 flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-1">
-                <NodeChain plan={plan} selected={selectedRef} onSelect={setSelected} ask={ask} tools={tools} />
+                <NodeChain plan={plan} selected={selectedRef} onSelect={select} ask={ask} tools={tools} />
               </div>
-              {node && (
-                <NodeDetail
-                  node={node}
-                  plan={plan}
-                  run={run}
-                  ask={ask}
-                  onSelect={setSelected}
-                  unlockOf={unlockOf}
-                  onUnlock={showUnlock}
-                />
-              )}
-            </div>
-          )}
+            )}
+          </div>
         </section>
       ) : (
         <div className="flex-1" />
