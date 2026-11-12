@@ -1,14 +1,95 @@
 #!/usr/bin/env node
 
 // engine/src/cli.ts
-import { existsSync, readFileSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { existsSync, readFileSync as readFileSync2 } from "node:fs";
+import os2 from "node:os";
+import path2 from "node:path";
 import { parseEnv } from "node:util";
 
 // engine/src/flags.ts
 var kebab = (s) => s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 var camel = (s) => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+
+// engine/src/selfUpdate.ts
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { accessSync, chmodSync, constants, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+var RELEASE = "https://github.com/bigmoostache/retroback/releases/download/latest";
+var DAY_MS = 24 * 60 * 60 * 1e3;
+var TIMEOUT_MS = 5e3;
+var INSTALL = "npm install -g github:bigmoostache/retroback";
+var sha256 = (data) => createHash("sha256").update(data).digest("hex");
+function stateFile() {
+  const cache = process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
+  return path.join(cache, "rb", "update.json");
+}
+function dueToday() {
+  const file = stateFile();
+  try {
+    const { checkedAt } = JSON.parse(readFileSync(file, "utf8"));
+    if (typeof checkedAt === "number" && Date.now() - checkedAt < DAY_MS) return false;
+  } catch {
+  }
+  try {
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify({ checkedAt: Date.now() }));
+  } catch {
+  }
+  return true;
+}
+async function fetchBytes(url) {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS), redirect: "follow" });
+    return res.ok ? Buffer.from(await res.arrayBuffer()) : null;
+  } catch {
+    return null;
+  }
+}
+async function selfUpdate(argv) {
+  if (process.env.RB_NO_UPDATE === "1") return null;
+  let self;
+  try {
+    self = realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return null;
+  }
+  if (!self.endsWith(".mjs")) return null;
+  if (!dueToday()) return null;
+  const base = (process.env.RB_UPDATE_URL || RELEASE).replace(/\/+$/, "");
+  const published = (await fetchBytes(`${base}/rb.sha256`))?.toString("utf8").trim().split(/\s+/)[0];
+  if (!published || !/^[0-9a-f]{64}$/.test(published)) return null;
+  if (published === sha256(readFileSync(self))) return null;
+  try {
+    accessSync(path.dirname(self), constants.W_OK);
+  } catch {
+    console.error(`rb: a newer build exists, but ${path.dirname(self)} is not writable. Update with: ${INSTALL}`);
+    return null;
+  }
+  const fresh = await fetchBytes(`${base}/rb.mjs`);
+  if (!fresh || sha256(fresh) !== published) return null;
+  const tmp = `${self}.${process.pid}.tmp`;
+  try {
+    writeFileSync(tmp, fresh);
+    chmodSync(tmp, 493);
+    renameSync(tmp, self);
+  } catch {
+    try {
+      unlinkSync(tmp);
+    } catch {
+    }
+    console.error(`rb: could not replace ${self}. Update with: ${INSTALL}`);
+    return null;
+  }
+  console.error("rb: updated to the latest build of main.");
+  const run = spawnSync(process.execPath, [self, ...argv], {
+    stdio: "inherit",
+    env: { ...process.env, RB_NO_UPDATE: "1" }
+  });
+  return run.status ?? 1;
+}
 
 // engine/src/summary.ts
 var tally = (items) => ({ total: items.length, met: items.filter((i) => i.met).length });
@@ -34,12 +115,12 @@ var DEFAULT_API = "http://127.0.0.1:7979";
 var SETTINGS = ["RB_API", "RB_KEY", "RB_PLAN"];
 function envFiles() {
   const files = [];
-  for (let dir = process.cwd(); ; dir = path.dirname(dir)) {
-    files.push(path.join(dir, ".env"));
-    if (path.dirname(dir) === dir) break;
+  for (let dir = process.cwd(); ; dir = path2.dirname(dir)) {
+    files.push(path2.join(dir, ".env"));
+    if (path2.dirname(dir) === dir) break;
   }
-  const config = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config");
-  files.push(path.join(config, "rb", ".env"));
+  const config = process.env.XDG_CONFIG_HOME || path2.join(os2.homedir(), ".config");
+  files.push(path2.join(config, "rb", ".env"));
   return files.filter((file, i) => files.indexOf(file) === i && existsSync(file));
 }
 function readSettings() {
@@ -50,7 +131,7 @@ function readSettings() {
   for (const file of envFiles()) {
     let parsed;
     try {
-      parsed = parseEnv(readFileSync(file, "utf8"));
+      parsed = parseEnv(readFileSync2(file, "utf8"));
     } catch {
       continue;
     }
@@ -66,10 +147,10 @@ var Unreachable = class extends Error {
 function remoteBackend(base, key) {
   const root = base.replace(/\/+$/, "");
   const auth = key ? { authorization: `Bearer ${key}` } : {};
-  const request = async (path2, init) => {
+  const request = async (path3, init) => {
     let res;
     try {
-      res = await fetch(`${root}/api/${path2}`, { ...init, headers: { ...auth, ...init?.headers } });
+      res = await fetch(`${root}/api/${path3}`, { ...init, headers: { ...auth, ...init?.headers } });
     } catch {
       throw new Unreachable(`The engine API does not answer at ${root}.`);
     }
@@ -394,6 +475,8 @@ var overview = (infos) => [
 ].join("\n");
 async function main() {
   const raw = process.argv.slice(2);
+  const updated = await selfUpdate(raw);
+  if (updated !== null) return updated;
   const json = raw.includes("--json");
   const fail = (code, message) => {
     if (json) console.log(JSON.stringify({ ok: false, error: { code, message } }, null, 2));

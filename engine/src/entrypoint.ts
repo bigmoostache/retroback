@@ -26,11 +26,17 @@ update it (step 2).
 
 ## 2. Update rb
 
-The same command installs the latest build of main over the old one:
+You do not have to: rb updates itself. Once a day it checks the latest build
+of main, replaces itself when a newer one exists, and runs your command with
+it (one line on stderr says so). If it cannot write its own file, it prints
+the command to run instead:
 
 \`\`\`sh
 npm install -g github:bigmoostache/retroback
 \`\`\`
+
+An rb older than this feature does not update itself: run that command once.
+\`RB_NO_UPDATE=1\` turns the update off.
 
 ## 3. Configure it once, in a .env file
 

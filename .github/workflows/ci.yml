@@ -78,12 +78,14 @@ jobs:
         run: |
           tar -czf retroback-web.tar.gz -C assets/web/dist .
           cp assets/dist/rb.mjs rb.mjs
+          # What rb compares its own file with, once a day, to update itself.
+          sha256sum rb.mjs | cut -d' ' -f1 > rb.sha256
       - name: Update the "latest" release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest --yes --cleanup-tag || true
-          gh release create latest retroback-web.tar.gz rb.mjs \
+          gh release create latest retroback-web.tar.gz rb.mjs rb.sha256 \
             --title "Latest build of main" \
             --notes "Built from ${GITHUB_SHA} on every merge to main." \
             --target "${GITHUB_SHA}" --prerelease
