@@ -9,19 +9,23 @@
  * does can be typed as the `rb` commands it prints. Only the data is fake.
  * A plain `pnpm seed` never touches an existing plan: edits made in the app stay.
  */
+import { userByEmail } from "./access.ts"
 import { db } from "./db.ts"
+import { DEV_EMAIL } from "./env.ts"
 import { toCommand } from "./flags.ts"
-import { runOp } from "./ops/index.ts"
+import { runOp, type Ctx } from "./ops/index.ts"
 import type { CheckView, NodeStatus, NodeView, PlanSummary } from "./types.ts"
 
 const verbose = process.argv.includes("--verbose")
 const asked = process.argv.slice(2).filter((arg) => !arg.startsWith("-"))
 let count = 0
+/** The seed plans belong to local@dev, the user DEV=true signs in as. */
+let ctx: Ctx = { actor: "seed", via: "seed", user: null }
 
 async function run<T>(op: string, input: Record<string, unknown> = {}): Promise<T> {
   const command = toCommand(op, input)
   if (verbose) console.log(command)
-  const response = await runOp(op, input, { actor: "seed", via: "seed" })
+  const response = await runOp(op, input, ctx)
   if (!response.ok) throw new Error(`${command}\n  ${response.error.message}`)
   count++
   return response.result as T
@@ -539,6 +543,8 @@ async function build(seed: SeedPlan): Promise<boolean> {
 }
 
 async function seed() {
+  const dev = await userByEmail(DEV_EMAIL, "Local developer")
+  ctx = { actor: dev.email, via: "seed", user: { id: dev.id, email: dev.email } }
   const unknown = asked.filter((slug) => !SEEDS.some((s) => s.plan.slug === slug))
   if (unknown.length) {
     throw new Error(`No seed plan ${unknown.join(", ")}. Seed plans: ${SEEDS.map((s) => s.plan.slug).join(", ")}.`)

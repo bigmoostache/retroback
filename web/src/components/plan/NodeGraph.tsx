@@ -217,7 +217,8 @@ export function NodeGraph({
         ref={scroller}
         data-graph
         onWheel={onWheel}
-        className="mx-2 mt-1 mb-2 max-h-[50vh] overflow-auto rounded-xl bg-background"
+        // Scrolls as before, without showing the scrollbars.
+        className="mx-2 mt-1 mb-2 max-h-[50vh] overflow-auto rounded-xl bg-background [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         <div className="relative" style={{ width: layout.width, height: layout.height }}>
           <svg

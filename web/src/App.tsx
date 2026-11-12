@@ -1,9 +1,11 @@
 import { useState } from "react"
-import { Target, Terminal } from "lucide-react"
+import { Target, Terminal, UserRound } from "lucide-react"
 import { OpDialog } from "@/components/ops/OpDialog"
 import { OpsScreen } from "@/components/ops/OpsScreen"
 import { PlanScreen } from "@/components/plan/PlanScreen"
+import { AccountScreen } from "@/components/shell/AccountScreen"
 import { SelectionPill } from "@/components/shell/chrome/SelectionPill"
+import { LoginScreen } from "@/components/shell/LoginScreen"
 import { StatusBar } from "@/components/shell/StatusBar"
 import { ThemeToggle } from "@/components/shell/widgets/ThemeToggle"
 import { Tip } from "@/components/ui/tip"
@@ -17,6 +19,7 @@ import "@/styles/app.css"
 const VIEWS = [
   { id: "plan", label: "Plan", hint: "The nodes, from the target back to the present", icon: Target },
   { id: "ops", label: "Operations", hint: "Every operation of the engine, as in rb help", icon: Terminal },
+  { id: "account", label: "Account", hint: "Who you are, and your API keys for rb", icon: UserRound },
 ] as const
 
 type View = (typeof VIEWS)[number]["id"]
@@ -25,6 +28,8 @@ function Shell() {
   const engine = useEngine()
   const [view, setView] = useState<View>("plan")
   const [request, setRequest] = useState<OpRequest | null>(null)
+
+  if (engine.auth && !engine.auth.user) return <LoginScreen auth={engine.auth} />
 
   return (
     <div className="relative flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
@@ -58,7 +63,13 @@ function Shell() {
           </div>
         </header>
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          {view === "plan" ? <PlanScreen engine={engine} ask={setRequest} /> : <OpsScreen engine={engine} />}
+          {view === "plan" ? (
+            <PlanScreen engine={engine} ask={setRequest} />
+          ) : view === "ops" ? (
+            <OpsScreen engine={engine} />
+          ) : (
+            <AccountScreen engine={engine} />
+          )}
         </div>
       </div>
       <StatusBar engine={engine} />

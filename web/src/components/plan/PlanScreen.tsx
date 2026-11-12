@@ -1,11 +1,11 @@
 import { useState } from "react"
-import { Pencil, Target, Trash2, Unplug } from "lucide-react"
+import { Pencil, Target, Trash2, Unplug, Users } from "lucide-react"
 import { CommandHint } from "@/components/ops/CommandLine"
 import { LayoutSwitch, type PlanLayout } from "@/components/plan/LayoutSwitch"
+import { MembersDialog } from "@/components/plan/MembersDialog"
 import { NodeChain } from "@/components/plan/NodeChain"
 import { NodeDetail } from "@/components/plan/NodeDetail"
 import { NodeGraph } from "@/components/plan/NodeGraph"
-import { CheckPanel, ResourcePanel } from "@/components/plan/PlanPanels"
 import { PlanRail } from "@/components/plan/PlanRail"
 import { buttonVariants } from "@/components/ui/button-variants"
 import { EmptyState } from "@/components/ui/EmptyState"
@@ -23,6 +23,7 @@ export function PlanScreen({ engine, ask }: { engine: Engine; ask: Ask }) {
   const { plan, plans, slug, online, run } = engine
   const [selected, setSelected] = useState<string | null>(null)
   const [unlockOf, setUnlockOf] = useState<string | null>(null)
+  const [membersOpen, setMembersOpen] = useState(false)
   // The unlock view belongs to one plan.
   const [unlockPlan, setUnlockPlan] = useState(slug)
   if (unlockPlan !== slug) {
@@ -74,6 +75,7 @@ export function PlanScreen({ engine, ask }: { engine: Engine; ask: Ask }) {
         </EmptyState>
       ) : plan ? (
         <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <MembersDialog plan={plan} engine={engine} open={membersOpen} onClose={() => setMembersOpen(false)} />
           <header className="flex items-start gap-2 px-6 pt-5 pb-4">
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <div className="flex items-baseline gap-3">
@@ -89,6 +91,12 @@ export function PlanScreen({ engine, ask }: { engine: Engine; ask: Ask }) {
             <span className="flex h-6 items-center">
               <CommandHint command={toCommand("plan.show", { plan: plan.slug })} />
             </span>
+            <IconAction
+              label="Members: share the plan"
+              command="rb plan members"
+              icon={Users}
+              onClick={() => setMembersOpen(true)}
+            />
             <IconAction label="Edit the plan" command="rb plan update" icon={Pencil} onClick={() => ask(planUpdate(plan))} />
             <IconAction
               label="Delete the plan"
@@ -111,10 +119,6 @@ export function PlanScreen({ engine, ask }: { engine: Engine; ask: Ask }) {
                 onUnlock={showUnlock}
               />
               <div className="-m-1 flex min-h-0 flex-1 flex-row gap-4 overflow-hidden p-1">
-                <div className="-m-1 flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-1">
-                  <CheckPanel check={plan.check} onSelect={setSelected} />
-                  <ResourcePanel plan={plan} />
-                </div>
                 {node && (
                   <NodeDetail
                     node={node}
@@ -124,6 +128,7 @@ export function PlanScreen({ engine, ask }: { engine: Engine; ask: Ask }) {
                     onSelect={setSelected}
                     unlockOf={unlockOf}
                     onUnlock={showUnlock}
+                    wide
                   />
                 )}
               </div>
@@ -132,8 +137,6 @@ export function PlanScreen({ engine, ask }: { engine: Engine; ask: Ask }) {
             <div className="flex min-h-0 flex-1 flex-row gap-4 overflow-hidden px-6 pb-4">
               <div className="-m-1 flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-1">
                 <NodeChain plan={plan} selected={node?.ref ?? null} onSelect={setSelected} ask={ask} tools={tools} />
-                <CheckPanel check={plan.check} onSelect={setSelected} />
-                <ResourcePanel plan={plan} />
               </div>
               {node && (
                 <NodeDetail

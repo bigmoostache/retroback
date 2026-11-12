@@ -11,3 +11,8 @@ createRoot(root).render(
     <App />
   </StrictMode>,
 )
+
+// Installable app (PWA). Not in dev: the worker would get in the way of hot reload.
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => void navigator.serviceWorker.register("/sw.js"))
+}

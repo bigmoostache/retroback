@@ -6,6 +6,7 @@
  * whether it succeeds or not: who asked, when, through what, with what input.
  */
 import { z } from "zod"
+import { withCtx } from "../access.ts"
 import { db } from "../db.ts"
 import { kebab } from "../flags.ts"
 import type { OpInfo, OpResponse } from "../types.ts"
@@ -14,11 +15,13 @@ import { eventOps } from "./events.ts"
 import { itemOps } from "./items.ts"
 import { messageOps } from "./messages.ts"
 import { nodeOps } from "./node.ts"
+import { peopleOps } from "./people.ts"
 import { planOps } from "./plan.ts"
 
 export type { Ctx }
 
-const ENGINE: Ctx = { actor: "engine", via: "engine" }
+/** The engine itself (maintenance scripts): no user, no access check. */
+export const ENGINE: Ctx = { actor: "engine", via: "engine", user: null }
 
 const inputSchema = (op: Op) => z.toJSONSchema(op.input, { io: "input" }) as OpInfo["input"]
 
@@ -41,7 +44,7 @@ const describe = (op: Op): OpInfo => ({
   cli: usage(op),
 })
 
-const domainOps: Op[] = [...planOps, ...nodeOps, ...itemOps, ...messageOps]
+const domainOps: Op[] = [...planOps, ...nodeOps, ...itemOps, ...messageOps, ...peopleOps]
 
 export const ops: Op[] = [
   ...domainOps,
@@ -119,8 +122,10 @@ export async function runOp(name: string, raw: unknown = {}, ctx: Ctx = ENGINE):
     response = { ok: false, error: { code: "invalid", message: `Missing ${flags}. Usage: ${usage(op)}` } }
   } else {
     try {
-      input = op.parse(raw)
-      response = { ok: true, result: await op.exec(input, ctx) }
+      input = op.parse(raw, ctx)
+      const parsed = input
+      // Access checks (access.ts) read the user from this context.
+      response = { ok: true, result: await withCtx(ctx, () => op.exec(parsed, ctx)) }
     } catch (error) {
       const known = explain(error, op)
       if (!known) throw error

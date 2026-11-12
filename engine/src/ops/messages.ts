@@ -39,16 +39,20 @@ export const messageOps = [
       plan: planFlag,
       node: nodeFlag,
       text: z.string().trim().min(1).describe("The message."),
-      author: z.string().trim().min(1).default("anonymous").describe("Who writes it: a name or an agent."),
+      author: z.string().trim().min(1).optional().describe("Who writes it: a name or an agent. Default: your email."),
       id: z
         .string()
         .regex(/^m-[a-z0-9-]{1,40}$/, "an id is m- followed by lowercase letters, digits or dashes")
         .optional()
         .describe("Id of the message, e.g. m-decision. A random one (m-7f3a2c) when omitted."),
     }),
-    // Drawn before running, so the event log keeps it and a replay gives the same id.
-    prepare: (input) => ({ ...input, id: input.id ?? messageHandle() }),
-    run: async ({ plan, node, text, author, id }) => {
+    // Drawn before running, so the event log keeps them and a replay gives the same message.
+    prepare: (input, ctx) => ({
+      ...input,
+      id: input.id ?? messageHandle(),
+      author: input.author ?? ctx.user?.email ?? "anonymous",
+    }),
+    run: async ({ plan, node, text, author = "anonymous", id }) => {
       const found = await nodeOf(plan, node)
       const rows = await rowsOf(found.node.id)
       const handle = id ?? messageHandle()

@@ -4,40 +4,54 @@
  *
  * It plays one scenario twice on a throwaway plan, once through `rb --json`
  * and once through POST /api/<op>, and compares the answers step by step.
- * The scenario must use every operation of the registry, so adding an
- * operation without a step here fails the check.
+ * Both sides sign in with API keys of two test users: the owner of the plan,
+ * and a stranger who is given access, then leaves. The scenario must use
+ * every operation of the registry, so adding an operation without a step
+ * here fails the check.
  */
 import { execFile } from "node:child_process"
 import path from "node:path"
 import { isDeepStrictEqual } from "node:util"
+import { hashSecret, newSecret, userByEmail } from "./access.ts"
 import { db } from "./db.ts"
-import { API_PORT } from "./env.ts"
+import { API_PORT, DEV } from "./env.ts"
 import { kebab, toCommand } from "./flags.ts"
-import { opInfos, runOp } from "./ops/index.ts"
+import { ENGINE, opInfos, runOp } from "./ops/index.ts"
 import type { CheckView, OpResponse, PlanSummary } from "./types.ts"
 
 const PLAN = "isometry-check"
 const REPLAY = "isometry-replay"
 const API = `http://127.0.0.1:${API_PORT}`
 const RB = path.resolve(import.meta.dirname, "../../bin/rb")
+const OWNER = "isometry-owner@test"
+const STRANGER = "isometry-stranger@test"
+/** The keys the check signs in with; every other key of the test users is removed between runs. */
+const KEY_NAME = "isometry"
 /** HTTP status of each error code (see server.ts). */
-const STATUS: Record<string, number> = { invalid: 400, not_found: 404, conflict: 409 }
+const STATUS: Record<string, number> = { invalid: 400, unauthorized: 401, forbidden: 403, not_found: 404, conflict: 409 }
 
 type Input = Record<string, unknown>
-type Outcome = "ok" | "invalid" | "not_found" | "conflict"
-/** An operation, its input, and how it must end ("ok" when omitted). */
-type Step = [op: string, input: Input, expect?: Outcome]
+type Outcome = "ok" | "invalid" | "not_found" | "conflict" | "forbidden" | "unauthorized"
+/** Who runs a step: the owner of the plan (default), the stranger, or nobody (no key). */
+type Who = "owner" | "stranger" | "nobody"
+/** An operation, its input, how it must end ("ok" when omitted), and who runs it. */
+type Step = [op: string, input: Input, expect?: Outcome, who?: Who]
 
 const plan = { plan: PLAN }
 const n2 = { plan: PLAN, node: "N2" }
 
 const STEPS: Step[] = [
   ["op.list", {}],
+  // Without a key: refused, except with DEV=true, where it is local@dev.
+  ["plan.list", {}, DEV ? "ok" : "unauthorized", "nobody"],
   [
     "plan.create",
     { slug: PLAN, title: "Isometry check", target: "Reach 103.", metric: "score", unit: "points", presentValue: 100, targetValue: 103 },
   ],
   ["plan.list", {}],
+  ["user.me", {}],
+  // A plan is invisible to those it is not shared with.
+  ["plan.show", plan, "not_found", "stranger"],
   ["node.create", { ...plan, title: "Target", criterion: ["Score is 103 for 2 weeks."] }],
   ["node.create", { ...plan, title: "Step before", description: "What the target requires.", enables: ["N1"], size: 70 }],
   ["node.create", { ...plan, title: "First step", enables: ["N2"], level: 101 }],
@@ -66,14 +80,25 @@ const STEPS: Step[] = [
   ["resource.add", { ...n2, kind: "capital", name: "licence", quantity: 300, unit: "EUR" }],
   ["resource.update", { ...n2, resource: "analyst", quantity: 3 }],
   ["resource.remove", { ...n2, resource: "licence" }],
+  // Sharing: the owner gives access, the contributor works, may not delete or share, then leaves.
+  ["plan.share", { ...plan, email: STRANGER }],
+  ["plan.share", { ...plan, email: STRANGER }, "conflict"],
+  ["plan.members", plan],
   ["message.add", { ...n2, text: "Who owns the data access?", author: "guillaume", id: "m-owner" }],
-  ["message.add", { ...n2, text: "Ops lead, from the 1st.", id: "m-answer" }],
+  // No --author: the message is signed with the email of the key's user.
+  ["message.add", { ...n2, text: "Ops lead, from the 1st.", id: "m-answer" }, "ok", "stranger"],
   ["message.add", { ...n2, text: "Twice.", id: "m-answer" }, "conflict"],
   ["message.add", { ...n2, text: "  " }, "invalid"],
   ["message.update", { ...n2, message: "m-answer", author: "agent-1" }],
-  ["message.list", n2],
+  ["message.list", n2, "ok", "stranger"],
   ["message.remove", { ...n2, message: "m-owner" }],
   ["message.remove", { ...n2, message: "m-nope" }, "not_found"],
+  ["plan.delete", plan, "forbidden", "stranger"],
+  ["plan.share", { ...plan, email: "someone@test" }, "forbidden", "stranger"],
+  ["plan.unshare", { ...plan, email: OWNER }, "conflict"],
+  ["plan.unshare", { ...plan, email: STRANGER }, "ok", "stranger"],
+  ["plan.unshare", { ...plan, email: STRANGER }, "not_found"],
+  ["node.show", { plan: PLAN, ref: "N2" }, "not_found", "stranger"],
   // A new node that takes over the requirement N2 provided to N1.
   ["node.create", { ...plan, title: "Other way", enables: ["N1"], forRequirement: "step-before" }],
   ["node.create", { ...plan, title: "Nope", enables: ["N1"], forRequirement: "missing" }, "not_found"],
@@ -91,8 +116,15 @@ const STEPS: Step[] = [
   // Half the gap: the steps are now too large, so the check must fail on both sides.
   ["plan.update", { ...plan, gapPercent: 0.5 }],
   ["plan.check", plan],
+  // API keys of the signed-in user.
+  ["key.create", { name: "temp" }],
+  ["key.create", { name: "temp" }, "conflict"],
+  ["key.list", {}],
+  ["key.revoke", { name: "temp" }],
+  ["key.revoke", { name: "temp" }, "not_found"],
   // The log of this run, then the plan rebuilt from it as it is now.
   ["event.list", { ...plan, last: 3 }],
+  ["event.list", plan, "not_found", "stranger"],
   ["event.replay", { ...plan, as: REPLAY }],
   ["event.replay", { ...plan, as: REPLAY }, "conflict"],
   ["event.replay", { plan: "never-existed", as: "nope" }, "not_found"],
@@ -107,34 +139,31 @@ interface Answer {
   code: number
 }
 
-type Via = (op: string, input: Input) => Promise<Answer>
+type Keys = Record<Who, string | undefined>
+type Via = (op: string, input: Input, key: string | undefined) => Promise<Answer>
 
-const cliVia =
-  (extra: string[]): Via =>
-  (op, input) => {
-    const flags = Object.entries(input).flatMap(([key, value]) =>
-      (Array.isArray(value) ? value : [value]).flatMap((item) => [`--${kebab(key)}`, String(item)]),
-    )
-    const env = { ...process.env, RB_API: "" }
-    return new Promise((resolve, reject) => {
-      execFile(RB, [...op.split("."), ...flags, ...extra, "--json"], { maxBuffer: 16_000_000, env }, (error, stdout, stderr) => {
-        try {
-          resolve({ response: JSON.parse(stdout) as OpResponse<unknown>, code: error ? Number(error.code) || 1 : 0 })
-        } catch {
-          reject(new Error(`${toCommand(op, input)} --json did not print JSON:\n${stdout}${stderr}`))
-        }
-      })
+/** `rb --api <API> --key <key> ... --json`. */
+const viaCli: Via = (op, input, key) => {
+  const flags = Object.entries(input).flatMap(([k, value]) =>
+    (Array.isArray(value) ? value : [value]).flatMap((item) => [`--${kebab(k)}`, String(item)]),
+  )
+  const env = { ...process.env, RB_API: "", RB_KEY: "" }
+  const args = [...op.split("."), ...flags, "--api", API, ...(key ? ["--key", key] : []), "--json"]
+  return new Promise((resolve, reject) => {
+    execFile(RB, args, { maxBuffer: 16_000_000, env }, (error, stdout, stderr) => {
+      try {
+        resolve({ response: JSON.parse(stdout) as OpResponse<unknown>, code: error ? Number(error.code) || 1 : 0 })
+      } catch {
+        reject(new Error(`${toCommand(op, input)} --json did not print JSON:\n${stdout}${stderr}`))
+      }
     })
-  }
+  })
+}
 
-/** `rb` on the database, and `rb --api` on the running API. */
-const viaCli = cliVia([])
-const viaRemoteCli = cliVia(["--api", API])
-
-const viaApi: Via = async (op, input) => {
+const viaApi: Via = async (op, input, key) => {
   const res = await fetch(`${API}/api/${op}`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...(key ? { authorization: `Bearer ${key}` } : {}) },
     body: JSON.stringify(input),
   })
   return { response: (await res.json()) as OpResponse<unknown>, code: res.status }
@@ -144,9 +173,10 @@ const outcome = (r: OpResponse<unknown>) => (r.ok ? "ok" : r.error.code)
 
 /**
  * The runs happen at different times and through different entry points:
- * timestamps, log sequence numbers and who/through what are compared as present, not by value.
+ * timestamps, log sequence numbers, who/through what and key secrets are
+ * compared as present, not by value.
  */
-const VARYING = new Set(["at", "seq", "upTo", "actor", "via"])
+const VARYING = new Set(["at", "seq", "upTo", "actor", "via", "secret", "prefix", "createdAt", "lastUsedAt"])
 const timeless = (value: unknown): unknown =>
   Array.isArray(value)
     ? value.map(timeless)
@@ -167,19 +197,33 @@ function exitFor(op: string, r: OpResponse<unknown>) {
 
 const statusFor = (r: OpResponse<unknown>) => (r.ok ? 200 : (STATUS[r.error.code] ?? 400))
 
-/** Removes the throwaway plans, whatever state a run left them in. */
+/** Removes the throwaway plans and the extra keys of the test users, whatever state a run left them in. */
 async function reset() {
-  const plans = await runOp("plan.list")
-  if (!plans.ok) return
-  for (const slug of [PLAN, REPLAY]) {
-    if ((plans.result as PlanSummary[]).some((p) => p.slug === slug)) await runOp("plan.delete", { plan: slug })
+  const plans = await runOp("plan.list", {}, ENGINE)
+  if (plans.ok) {
+    for (const slug of [PLAN, REPLAY]) {
+      if ((plans.result as PlanSummary[]).some((p) => p.slug === slug)) await runOp("plan.delete", { plan: slug }, ENGINE)
+    }
   }
+  await db.apiKey.deleteMany({ where: { user: { email: { in: [OWNER, STRANGER] } }, name: { not: KEY_NAME } } })
 }
 
-async function play(via: Via): Promise<Answer[]> {
+/** A fresh key for each test user, written straight to the database. */
+async function keysFor(): Promise<Keys> {
+  const key = async (email: string) => {
+    const user = await userByEmail(email, email.split("@")[0])
+    await db.apiKey.deleteMany({ where: { userId: user.id } })
+    const secret = newSecret("rb_")
+    await db.apiKey.create({ data: { userId: user.id, name: KEY_NAME, prefix: secret.slice(0, 7), hash: hashSecret(secret) } })
+    return secret
+  }
+  return { owner: await key(OWNER), stranger: await key(STRANGER), nobody: undefined }
+}
+
+async function play(via: Via, keys: Keys): Promise<Answer[]> {
   await reset()
   const answers: Answer[] = []
-  for (const [op, input] of STEPS) answers.push(await via(op, input))
+  for (const [op, input, , who = "owner"] of STEPS) answers.push(await via(op, input, keys[who]))
   return answers
 }
 
@@ -198,14 +242,13 @@ async function main(): Promise<number> {
     if (problems.length) failures++
   }
 
-  const cli = await play(viaCli)
-  const api = await play(viaApi)
-  const remote = await play(viaRemoteCli)
+  const keys = await keysFor()
+  const cli = await play(viaCli, keys)
+  const api = await play(viaApi, keys)
 
-  STEPS.forEach(([op, input, expect = "ok"], i) => {
+  STEPS.forEach(([op, input, expect = "ok", who = "owner"], i) => {
     const a = cli[i]!
     const b = api[i]!
-    const c = remote[i]!
     const problems: string[] = []
     if (!isDeepStrictEqual(timeless(a.response), timeless(b.response))) {
       problems.push(
@@ -214,17 +257,12 @@ async function main(): Promise<number> {
         `  api: ${JSON.stringify(b.response)}`,
       )
     }
-    if (!isDeepStrictEqual(timeless(c.response), timeless(b.response)) || c.code !== a.code) {
-      problems.push(
-        "rb --api answers differently from rb:",
-        `  rb --api: ${c.code} ${JSON.stringify(c.response)}`,
-      )
-    }
     if (outcome(a.response) !== expect) problems.push(`rb answers ${outcome(a.response)}, expected ${expect}`)
     if (outcome(b.response) !== expect) problems.push(`the API answers ${outcome(b.response)}, expected ${expect}`)
     if (a.code !== exitFor(op, a.response)) problems.push(`rb exits with ${a.code}, expected ${exitFor(op, a.response)}`)
     if (b.code !== statusFor(b.response)) problems.push(`the API answers status ${b.code}, expected ${statusFor(b.response)}`)
-    report(problems, `${toCommand(op, input)}${expect === "ok" ? "" : `  (${expect})`}`)
+    const as = who === "owner" ? "" : `  [as ${who}]`
+    report(problems, `${toCommand(op, input)}${expect === "ok" ? "" : `  (${expect})`}${as}`)
   })
 
   // The list both sides serve is the registry itself, and the scenario uses all of it.
@@ -242,7 +280,7 @@ async function main(): Promise<number> {
   console.log(
     failures
       ? `\nIsometry: ${failures} failure${failures === 1 ? "" : "s"}.`
-      : `\nIsometry: ok. ${names.length} operations, ${STEPS.length} steps, same answers from rb, rb --api and the API.`,
+      : `\nIsometry: ok. ${names.length} operations, ${STEPS.length} steps, same answers from rb and the API.`,
   )
   return failures ? 1 : 0
 }
@@ -253,4 +291,8 @@ main()
     console.error(error instanceof Error ? error.message : error)
     process.exitCode = 1
   })
-  .finally(() => reset().finally(() => db.$disconnect()))
+  .finally(() =>
+    reset()
+      .then(() => db.apiKey.deleteMany({ where: { user: { email: { in: [OWNER, STRANGER] } } } }))
+      .finally(() => db.$disconnect()),
+  )

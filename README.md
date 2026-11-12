@@ -22,13 +22,40 @@ npm install -g github:bigmoostache/retroback
 rb help
 ```
 
-`rb` works on a database (`DATABASE_URL`) or on a running engine API:
+`rb` always talks to an engine API, signed in with an API key:
 
 ```sh
-rb --api http://host:7979 plan list      # or: RB_API=http://host:7979 rb plan list
+export RB_API=http://host:7979      # default http://127.0.0.1:7979
+export RB_KEY=rb_...                # from the web app, or: rb key create --name laptop
+rb plan list
 ```
 
-The `--api` flag wins over `RB_API`. Add `--json` to any command for the raw answer.
+`--api` and `--key` win over `RB_API` and `RB_KEY`. Add `--json` to any command for the raw answer.
+`rb` never touches the database, so access checks and the event log always apply.
+
+## Users and sharing
+
+People sign in to the web app with Google. Each plan has one owner, its
+creator, and as many contributors as the owner shares it with. Others do not
+see it at all.
+
+```sh
+rb user me                                          # who you are, your plans
+rb plan share   --plan growth --email ana@corp.com  # owner only
+rb plan unshare --plan growth --email ana@corp.com  # owner, or a contributor leaving
+rb plan members --plan growth
+rb key create --name laptop                         # the secret is shown once
+rb key list
+rb key revoke --name laptop
+```
+
+Settings go in `.env` at the repo root (see `.env.example`):
+
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`: the Google OAuth client. Its
+  redirect URI is `<PUBLIC_URL>/auth/google/callback`.
+- `PUBLIC_URL`: where the web app is served, default `http://127.0.0.1:5190`.
+- `DEV=true`: no Google; the web app is signed in as `local@dev`, who owns
+  the seed plans. API keys still work.
 
 ## Run it locally
 
@@ -36,10 +63,18 @@ Needs Node 22+, pnpm and Docker.
 
 ```sh
 pnpm install
+cp .env.example .env  # DEV=true: signed in as local@dev, no Google needed
 pnpm db:up          # Postgres on 127.0.0.1:55440
 pnpm db:migrate
-pnpm seed           # two fake plans: demo (a chain) and growth (a tree)
+pnpm seed           # two fake plans owned by local@dev: demo (a chain) and growth (a tree)
 pnpm dev            # API on 127.0.0.1:7979, web app on http://127.0.0.1:5190
+```
+
+Then create a key in the web app (Account), or with `curl` while `DEV=true`:
+
+```sh
+curl -s -H 'content-type: application/json' -d '{"name":"laptop"}' http://127.0.0.1:7979/api/key.create
+export RB_KEY=rb_...
 bin/rb plan show --plan growth
 ```
 

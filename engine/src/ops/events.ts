@@ -4,10 +4,11 @@
  * who did what and when, and replaying it rebuilds a plan at any point.
  */
 import { z } from "zod"
+import { currentUser } from "../access.ts"
 import { db } from "../db.ts"
 import { slugify } from "../slug.ts"
 import type { EventView, OpResponse, PlanView, ReplayView } from "../types.ts"
-import { loadPlan } from "../views.ts"
+import { loadPlan, planOf } from "../views.ts"
 import { defineOp, OpError, type Ctx, type Input } from "./define.ts"
 
 type Run = (name: string, input: Input, ctx: Ctx) => Promise<OpResponse<unknown>>
@@ -40,6 +41,24 @@ function moved(event: EventView, to: string): Input {
   return { ...event.input, plan: to }
 }
 
+/** Not replayed: who has access belongs to the original plan, not to its copy. */
+const NOT_REPLAYED = ["event.replay", "plan.share", "plan.unshare"]
+
+/**
+ * The history of a plan is open to its members; once deleted, to whoever created it.
+ * Anyone else gets not_found, as for the plan itself.
+ */
+async function assertHistoryAccess(plan: string) {
+  const user = currentUser()
+  if (!user) return
+  if (await db.plan.findUnique({ where: { slug: plan } })) {
+    await planOf(plan)
+    return
+  }
+  const created = await db.event.findFirst({ where: { plan, op: "plan.create", ok: true, actor: user.email } })
+  if (!created) throw new OpError(`The log has no plan "${plan}" you can see.`, "not_found")
+}
+
 /** `run` is the registry's runOp, passed in so this file does not import the registry. */
 export const eventOps = (run: Run) => [
   defineOp({
@@ -53,10 +72,15 @@ export const eventOps = (run: Run) => [
       last: z.number().int().min(1).max(1000).default(50).describe("How many events at most: the latest ones."),
     }),
     run: async ({ plan, actor, since, last }) => {
+      const user = currentUser()
+      if (plan !== undefined) await assertHistoryAccess(plan)
+      // Without a plan, a user sees their own events only.
+      const own = user && plan === undefined ? { actor: user.email } : {}
       const rows = await db.event.findMany({
         where: {
           ...(plan === undefined ? {} : { plan }),
           ...(actor === undefined ? {} : { actor }),
+          ...own,
           ...(since === undefined ? {} : { seq: { gt: since } }),
         },
         orderBy: { seq: "desc" },
@@ -80,6 +104,7 @@ export const eventOps = (run: Run) => [
       const target = slugify(as)
       if (!target) throw new OpError("--as gives an empty slug.")
       if (target === plan) throw new OpError("--as must name a new plan, not the one replayed.")
+      await assertHistoryAccess(plan)
       if (await db.plan.findUnique({ where: { slug: target } })) {
         throw new OpError(`A plan "${target}" already exists: --as must name a new plan.`, "conflict")
       }
@@ -92,12 +117,13 @@ export const eventOps = (run: Run) => [
       const events = (
         await db.event.findMany({
           // A replay of this plan into another one is not part of its own history.
-          where: { plan, ok: true, op: { not: "event.replay" }, seq: { gte: created.seq, ...(upTo === undefined ? {} : { lte: upTo }) } },
+          where: { plan, ok: true, op: { notIn: NOT_REPLAYED }, seq: { gte: created.seq, ...(upTo === undefined ? {} : { lte: upTo }) } },
           orderBy: { seq: "asc" },
         })
       ).map(view)
 
-      const replay: Ctx = { actor: ctx.actor, via: "replay" }
+      // Replayed as the one asking: they own the new plan.
+      const replay: Ctx = { actor: ctx.actor, via: "replay", user: ctx.user }
       let last = created.seq
       for (const event of events) {
         const response = await run(event.op, moved(event, target), replay)

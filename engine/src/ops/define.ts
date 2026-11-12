@@ -2,7 +2,7 @@ import { z } from "zod"
 
 /** An error the caller can act on. Anything else is a bug. */
 export class OpError extends Error {
-  code: "not_found" | "invalid" | "conflict"
+  code: "not_found" | "invalid" | "conflict" | "forbidden"
 
   constructor(message: string, code: OpError["code"] = "invalid") {
     super(message)
@@ -15,11 +15,19 @@ type AnyObject = z.ZodObject<any, any>
 
 export type Input = Record<string, unknown>
 
+/** A signed-in person. */
+export interface User {
+  id: string
+  email: string
+}
+
 /** Who runs an operation, and through what. Kept in the event log. */
 export interface Ctx {
   actor: string
   /** cli, api, seed, replay... */
   via: string
+  /** The user it runs as. Null for the engine itself (maintenance scripts): no access check. */
+  user: User | null
 }
 
 /**
@@ -37,7 +45,7 @@ export interface Op {
    * (a message id). The event log keeps this input, so replaying it gives
    * the same result.
    */
-  parse: (raw: unknown) => Input
+  parse: (raw: unknown, ctx: Ctx) => Input
   /** Runs on an input returned by `parse`. */
   exec: (input: Input, ctx: Ctx) => Promise<unknown>
 }
@@ -47,8 +55,8 @@ export function defineOp<S extends AnyObject>(def: {
   summary: string
   mutates: boolean
   input: S
-  /** Fills in what the schema cannot: random or derived values. */
-  prepare?: (input: z.output<S>) => z.output<S>
+  /** Fills in what the schema cannot: random or derived values (the author from the user). */
+  prepare?: (input: z.output<S>, ctx: Ctx) => z.output<S>
   run: (input: z.output<S>, ctx: Ctx) => Promise<unknown>
 }): Op {
   const prepare = def.prepare ?? ((input: z.output<S>) => input)
@@ -57,7 +65,7 @@ export function defineOp<S extends AnyObject>(def: {
     summary: def.summary,
     mutates: def.mutates,
     input: def.input,
-    parse: (raw) => prepare(def.input.parse(raw)) as Input,
+    parse: (raw, ctx) => prepare(def.input.parse(raw), ctx) as Input,
     exec: (input, ctx) => def.run(input as z.output<S>, ctx),
   }
 }
