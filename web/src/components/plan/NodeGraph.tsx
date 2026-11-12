@@ -80,8 +80,8 @@ function Card({
         <span className={cn("font-mono tabular-nums", node.gap.ok ? "text-ok" : "text-danger")}>
           {gapText(node.gap)}
         </span>
-        <span title="Difficulty, 0 to 100" className="font-mono text-muted-foreground tabular-nums">
-          d{node.difficulty}
+        <span title="Size, 0 to 100" className="font-mono text-muted-foreground tabular-nums">
+          s{node.size}
         </span>
         <span className="ml-auto text-muted-foreground tabular-nums">
           {met}/{node.criteria.length} criteria

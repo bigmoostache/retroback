@@ -9,7 +9,7 @@ reachable from the one before.
 
 Every node has a title, a description, precise success criteria, requirements
 (each one provided by earlier nodes, or ticked by hand), resources of any kind,
-a difficulty from 0 to 100, and messages. Requirements make the graph, which
+a size from 0 to 100, and messages. Requirements make the graph, which
 always stays free of loops.
 
 The same operations drive the CLI (`rb`), the HTTP API and the web app, so

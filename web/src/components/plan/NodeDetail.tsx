@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
 import { Check, Link2, LockOpen, Pencil, Plus, Trash2, X } from "lucide-react"
-import { unlock } from "@engine/graph.ts"
+import { unlock, unlockSize } from "@engine/graph.ts"
 import type { CheckItem, NodeStatus, NodeView, PlanView } from "@engine/types.ts"
 import { CommandHint } from "@/components/ops/CommandLine"
 import { StatusBadge } from "@/components/plan/StatusBadge"
@@ -68,6 +68,7 @@ function StatusSwitch({ status, onChange }: { status: NodeStatus; onChange: (sta
 function Section({
   title,
   count,
+  note,
   empty,
   add,
   action,
@@ -75,6 +76,7 @@ function Section({
 }: {
   title: string
   count: number
+  note?: string | undefined
   empty: string
   add?: { label: string; command: string; run: () => void } | undefined
   action?: ReactNode | undefined
@@ -85,6 +87,11 @@ function Section({
       <div className="flex h-6 items-center gap-2">
         <h3 className="text-callout font-semibold text-foreground">{title}</h3>
         <span className="text-subhead text-muted-foreground/50 tabular-nums">{count}</span>
+        {note && (
+          <span data-section-note className="font-mono text-subhead text-muted-foreground tabular-nums">
+            {note}
+          </span>
+        )}
         {action && <span className="ml-auto flex">{action}</span>}
         {add && (
           <span className="ml-auto flex">
@@ -183,8 +190,10 @@ export function NodeDetail({
   onUnlock: (ref: string | null) => void
 }) {
   const titleOf = (ref: string) => plan.nodes.find((n) => n.ref === ref)?.title ?? ""
+  const prereqs = new Map(plan.nodes.map((n) => [n.ref, n.dependsOn]))
   // Same answer as `rb node unlock`: both run graph.ts on the same links.
-  const unlocked = unlock(plan.nodes, new Map(plan.nodes.map((n) => [n.ref, n.dependsOn])), node.ref)
+  const unlocked = unlock(plan.nodes, prereqs, node.ref)
+  const sizeLeft = unlockSize(plan.nodes, prereqs, node.ref)
   const link = (ref: string) => (
     <button
       type="button"
@@ -218,7 +227,7 @@ export function NodeDetail({
               <span className={node.gap.ok ? "text-ok" : "text-danger"}>
                 {gapText(node.gap)} from {node.gap.from} ({num(node.gap.base)})
               </span>
-              <span className="text-muted-foreground">difficulty {node.difficulty}/100</span>
+              <span className="text-muted-foreground">size {node.size}/100</span>
             </div>
             <StatusSwitch
               status={node.status}
@@ -316,6 +325,7 @@ export function NodeDetail({
         <Section
           title="Unlock now"
           count={unlocked.length}
+          note={unlocked.length > 0 ? `size left ${sizeLeft}` : undefined}
           empty={node.status === "done" ? "Nothing: the node is done." : "Nothing."}
           action={
             unlocked.length > 0 ? (

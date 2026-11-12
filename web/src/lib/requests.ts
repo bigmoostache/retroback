@@ -92,7 +92,7 @@ export const nodeUpdate = (node: NodeView): OpRequest => ({
     description: node.description,
     level: node.level,
     status: node.status,
-    difficulty: node.difficulty,
+    size: node.size,
   },
   changesOnly: true,
   submitLabel: "Save",

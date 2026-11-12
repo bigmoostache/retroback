@@ -57,8 +57,8 @@ model Node {
   requirements Requirement[]
   resources    ResourceNeed[]
   messages     Message[]
-  /// How hard the node is, from 0 (trivial) to 100 (hardest).
-  difficulty   Int            @default(50)
+  /// How big the node is, from 0 (tiny) to 100 (largest).
+  size   Int            @default(50)
   /// Requirements of later nodes that this node provides.
   provides     RequirementProvider[]
 

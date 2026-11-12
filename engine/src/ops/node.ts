@@ -1,12 +1,13 @@
 import { z } from "zod"
 import { db } from "../db.ts"
-import { requires, unlock } from "../graph.ts"
+import { requires, unlock, unlockSize } from "../graph.ts"
 import { prerequisiteLevel } from "../rules.ts"
+import type { UnlockView } from "../types.ts"
 import { loadNode, loadPlan, nodeOf, normRef, planOf } from "../views.ts"
 import { defineOp, OpError, planFlag } from "./define.ts"
 
 const refFlag = z.string().describe("Node ref, e.g. N3.")
-const difficultyFlag = z.number().int().min(0).max(100).describe("How hard the node is, from 0 (trivial) to 100 (hardest).")
+const sizeFlag = z.number().int().min(0).max(100).describe("How big the node is, from 0 (tiny) to 100 (largest).")
 
 /** For each node id of a plan, the ids of the nodes that provide its requirements. */
 export async function prereqsOf(planId: string): Promise<Map<string, string[]>> {
@@ -51,7 +52,7 @@ export const nodeOps = [
   defineOp({
     name: "node.unlock",
     summary:
-      "What to tackle now to reach a node: the nodes not done yet, among it and everything it requires, whose own requirements are all done.",
+      "What to tackle now to reach a node: the nodes not done yet, among it and everything it requires, whose own requirements are all done. Also the size left: the heaviest path of sizes through what is not done, assuming perfect parallelism.",
     mutates: false,
     input: z.strictObject({ plan: planFlag, ref: refFlag }),
     run: async ({ plan, ref }) => {
@@ -59,7 +60,12 @@ export const nodeOps = [
       const target = view.nodes.find((n) => n.ref === normRef(ref))
       if (!target) throw new OpError(`No node ${normRef(ref)} in plan "${view.slug}".`, "not_found")
       const prereqs = new Map(view.nodes.map((n) => [n.ref, n.dependsOn]))
-      return unlock(view.nodes, prereqs, target.ref)
+      const result: UnlockView = {
+        target: target.ref,
+        nodes: unlock(view.nodes, prereqs, target.ref),
+        size: unlockSize(view.nodes, prereqs, target.ref),
+      }
+      return result
     },
   }),
 
@@ -86,7 +92,7 @@ export const nodeOps = [
         .number()
         .optional()
         .describe("Metric value reached once done. Default: one full step before the enabled node, or the target value for the first node."),
-      difficulty: difficultyFlag.default(50),
+      size: sizeFlag.default(50),
       criterion: z.array(z.string().min(1)).default([]).describe("Success criterion, precise and checkable. Repeatable."),
       requirement: z
         .array(z.string().min(1))
@@ -137,7 +143,7 @@ export const nodeOps = [
             title: input.title,
             description: input.description,
             level,
-            difficulty: input.difficulty,
+            size: input.size,
             criteria: { create: asItems(input.criterion) },
             requirements: { create: asItems(input.requirement) },
           },
@@ -164,7 +170,7 @@ export const nodeOps = [
 
   defineOp({
     name: "node.update",
-    summary: "Change the title, description, level, status or difficulty of a node.",
+    summary: "Change the title, description, level, status or size of a node.",
     mutates: true,
     input: z.strictObject({
       plan: planFlag,
@@ -173,7 +179,7 @@ export const nodeOps = [
       description: z.string().optional().describe("What the node is about."),
       level: z.number().optional().describe("Metric value reached once done."),
       status: z.enum(["todo", "doing", "done"]).optional().describe("Progress of the node."),
-      difficulty: difficultyFlag.optional(),
+      size: sizeFlag.optional(),
     }),
     run: async ({ plan, ref, ...data }) => {
       const found = await nodeOf(plan, ref)
