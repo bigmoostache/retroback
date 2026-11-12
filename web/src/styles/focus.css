@@ -1,0 +1,29 @@
+/*
+  ── Keyboard focus (HIG · Accessibility, Full Keyboard Access) ───────────
+  Many controls carry `outline-none` (Tailwind) and no replacement, so keyboard
+  users lose the focus position. One unlayered rule restores a visible ring on
+  every interactive element. Unlayered CSS outranks Tailwind's utility layer,
+  so it wins over `outline-none` without touching call sites.
+
+  Skipped on purpose:
+    * elements that already paint their own ring (`focus-visible:ring*`) so
+      the two do not stack;
+    * `tabindex="-1"` containers (dialog and popover panels take programmatic
+      focus; a ring around the whole panel is noise);
+    * text fields: they show a caret and own their focus style.
+*/
+:where(
+    button,
+    a[href],
+    summary,
+    select,
+    [role="button"],
+    [role="tab"],
+    [role="menuitem"],
+    [role="option"],
+    [role="switch"],
+    [tabindex]:not([tabindex="-1"])
+  ):not([class*="focus-visible:ring"]):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}

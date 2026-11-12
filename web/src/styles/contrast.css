@@ -1,0 +1,36 @@
+/*
+  ── Increase Contrast (HIG · Accessibility) ──────────────────────────────
+  macOS "Increase Contrast" maps to `prefers-contrast: more`. The default
+  palette already passes WCAG AA; this block raises text to ~7:1 and strengthens
+  field edges and the focus ring, as the HIG asks for a higher-contrast scheme.
+  Values only — no selectors beyond the two palette roots.
+*/
+@media (prefers-contrast: more) {
+  :root {
+    --muted-foreground: #4a4a45;
+    --foreground: #141412;
+    --signal: #073f94;
+    --primary: #073f94;
+    --interactive: #094d5f;
+    --ok: #17543a;
+    --warn: #6e4200;
+    --danger: #8c1a1e;
+    --danger-solid: #8c1a1e;
+    --input: #55554f;
+    --border-strong: #55554f;
+    --ring: #073f94;
+    --unlit: #62625c;
+  }
+
+  .dark {
+    --muted-foreground: #d4d2cc;
+    --foreground: #fff;
+    --signal: #b3d3ff;
+    --interactive: #8fdcee;
+    --danger: #ffc2bf;
+    --danger-solid: #9e2f2f;
+    --input: #b0b0af;
+    --border-strong: #b0b0af;
+    --ring: #b3d3ff;
+  }
+}

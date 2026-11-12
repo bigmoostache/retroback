@@ -1,0 +1,41 @@
+{
+  "name": "retroback",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Plan backward from a target to the present. rb is its command line.",
+  "type": "module",
+  "packageManager": "pnpm@11.6.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "rb": "dist/rb.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "prepare": "node scripts/build-cli.mjs",
+    "build:cli": "node scripts/build-cli.mjs",
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "db:migrate": "pnpm --filter engine exec prisma migrate dev",
+    "db:generate": "pnpm --filter engine exec prisma generate",
+    "seed": "pnpm --filter engine exec tsx src/seed.ts",
+    "api": "pnpm --filter engine exec tsx watch src/server.ts",
+    "web": "pnpm --filter web dev",
+    "dev": "pnpm run db:up && pnpm run --parallel \"/^(api|web)$/\"",
+    "check:isometry": "pnpm --filter engine exec tsx src/isometry.ts",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "prisma": "7.10.1",
+    "zod": "^4.6.7"
+  }
+}

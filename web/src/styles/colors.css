@@ -1,0 +1,69 @@
+/*
+  ── Colour roles beyond the core palette ─────────────────────────────────
+  index.css owns the surface / ink / status ladder. This file holds the roles
+  that used to be hard-coded at call sites (`text-white`, `bg-black/40`,
+  `#60a5fa`, `emerald-500` …), so no component carries a raw colour:
+
+    --scrim, --scrim-soft   dimming behind modals / sheets, and chips on them
+    --shade                 black to darken a tint (avatar gradient)
+    --on-solid              ink on a fixed-colour fill (switch thumb, danger button)
+    --on-interactive|warn|danger   ink on a solid fill of that status token:
+                            white in light, the dark ground in dark (the dark
+                            status tokens are light tints, white would fail AA)
+    --chart-1 … --chart-8   categorical data colours (cost charts, series)
+
+  Values only; Tailwind reads them through the `@theme` block, so
+  `bg-scrim`, `text-on-warn`, `fill-chart-3` work like any other token.
+*/
+@theme inline {
+  --color-scrim: var(--scrim);
+  --color-scrim-soft: var(--scrim-soft);
+  --color-on-solid: var(--on-solid);
+  --color-on-interactive: var(--on-interactive);
+  --color-on-warn: var(--on-warn);
+  --color-on-danger: var(--on-danger);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-8: var(--chart-8);
+}
+
+:root {
+  --scrim: #0006;
+  --scrim-soft: #00000026;
+  --shade: #000;
+  --on-solid: #fff;
+  --on-interactive: #fff;
+  --on-warn: #fff;
+  --on-danger: #fff;
+  --chart-1: #2f6fdb;
+  --chart-2: #d9600a;
+  --chart-3: #7c4fd6;
+  --chart-4: #14966a;
+  --chart-5: #d6366a;
+  --chart-6: #b8830a;
+  --chart-7: #0f89b8;
+  --chart-8: #b83bc9;
+}
+
+.dark {
+  --scrim: #0009;
+  --scrim-soft: #00000040;
+  --shade: #000;
+  --on-solid: #fff;
+  --on-interactive: #0b2a31;
+  --on-warn: #2a1f00;
+  --on-danger: #3a0d0c;
+  --chart-1: #60a5fa;
+  --chart-2: #f97316;
+  --chart-3: #a78bfa;
+  --chart-4: #34d399;
+  --chart-5: #fb7185;
+  --chart-6: #fbbf24;
+  --chart-7: #38bdf8;
+  --chart-8: #e879f9;
+}

@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+engine/src/generated
+*.log
+.DS_Store
+.screens/
+.backups/
+.context-pilot/
+.worktrees/

@@ -1,0 +1,137 @@
+// Retroback: plan backward from a target (future) to now (present).
+//
+// A Plan fixes one measurable metric, its value today (presentValue) and the
+// value aimed at (targetValue). Nodes are created from the target backward.
+// Each node states the metric level reached once it is done. The gap between a
+// node and the former nodes it depends on must stay within plan.gapPercent
+// (the 1% rule): small steps, each one reachable from the one before.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum NodeStatus {
+  todo
+  doing
+  done
+}
+
+model Plan {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  title        String
+  /// The target statement: what is true in the future.
+  target       String
+  /// What is measured to tell how far along we are.
+  metric       String
+  unit         String
+  presentValue Float
+  targetValue  Float
+  /// Maximum allowed gap between a node and what it depends on, in percent.
+  gapPercent   Float    @default(1)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  nodes        Node[]
+}
+
+model Node {
+  id           String         @id @default(cuid())
+  planId       String
+  plan         Plan           @relation(fields: [planId], references: [id], onDelete: Cascade)
+  /// Short handle, unique in the plan: N1 is the target, numbers grow backward.
+  ref          String
+  seq          Int
+  title        String
+  description  String         @default("")
+  /// Metric value reached once this node is done.
+  level        Float
+  status       NodeStatus     @default(todo)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  criteria     Criterion[]
+  requirements Requirement[]
+  resources    ResourceNeed[]
+  messages     Message[]
+  /// How hard the node is, from 0 (trivial) to 100 (hardest).
+  difficulty   Int            @default(50)
+  /// Requirements of later nodes that this node provides.
+  provides     RequirementProvider[]
+
+  @@unique([planId, ref])
+  @@unique([planId, seq])
+}
+
+/// A success criterion: precise and checkable.
+model Criterion {
+  id       String  @id @default(cuid())
+  nodeId   String
+  node     Node    @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  position Int
+  text     String
+  met      Boolean @default(false)
+
+  @@index([nodeId, position])
+}
+
+/// Something that must be true before work on the node can start.
+/// When nodes provide it, it is met once they are all done, and those nodes
+/// come before this one in the plan: these links are the edges of the graph.
+/// Without a provider, it is ticked by hand (`met`).
+model Requirement {
+  id        String                @id @default(cuid())
+  nodeId    String
+  node      Node                  @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  position  Int
+  text      String
+  met       Boolean               @default(false)
+  providers RequirementProvider[]
+
+  @@index([nodeId, position])
+}
+
+/// A node that provides a requirement of a later node.
+model RequirementProvider {
+  requirementId String
+  requirement   Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  nodeId        String
+  node          Node        @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@id([requirementId, nodeId])
+  @@index([nodeId])
+}
+
+/// A resource a node needs. `kind` is free text: human, computing, capital,
+/// machine, or anything else.
+model ResourceNeed {
+  id       String @id @default(cuid())
+  nodeId   String
+  node     Node   @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  position Int
+  kind     String
+  name     String
+  quantity Float
+  unit     String
+
+  @@index([nodeId, position])
+}
+
+/// A message under a node: a note, a question, a decision. Written by a person
+/// or an agent; `author` is free text.
+model Message {
+  id        String    @id @default(cuid())
+  nodeId    String
+  node      Node      @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  position  Int
+  author    String
+  text      String
+  createdAt DateTime  @default(now())
+  /// Set when the text changes after it was posted.
+  editedAt  DateTime?
+
+  @@index([nodeId, position])
+}

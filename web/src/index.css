@@ -1,0 +1,697 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./styles/radius.css";
+@import "./styles/colors.css";
+@import "./styles/contrast.css";
+@import "./styles/type.css";
+@import "./styles/motion.css";
+@import "./styles/focus.css";
+
+/* IBM Plex Mono — reserved for code, data, and tabular numerals only.
+   UI chrome uses the native macOS system stack (SF Pro) for an enterprise feel. */
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* `standalone:` utilities apply only when the app runs as an iOS home-screen /
+   PWA standalone app — the mobile Root tags <html class="standalone"> then
+   (navigator.standalone / display-mode:standalone). Lets a component tighten
+   its safe-area offset for standalone (where env(safe-area-inset-top) is the
+   full status-bar height) without touching the plain-Safari-tab case. */
+@custom-variant standalone (&:is(html.standalone *));
+
+/*
+  ════════════════════════════════════════════════════════════════════════
+  CONTEXT·PILOT — Two switchable palettes, enterprise / macOS aesthetic.
+
+  LIGHT  "Sand"           #FDFDFC · #F9F9F8 · #F1F0EF · #0A5FD0  (neutral + blue accent)
+  DARK   "Dungeon Forge"  #222220 · #333331 · #424240 · #DA7659  (charcoal + blue accent)
+
+  To explore other palettes, edit the two token blocks below (:root + .dark).
+  Every component reads these semantic tokens — nothing is hard-coded.
+  ════════════════════════════════════════════════════════════════════════
+*/
+
+@theme inline {
+  --font-sans: -apple-system, blinkmacsystemfont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--muted);
+  --color-secondary-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: var(--primary-foreground);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Semantic app palette */
+  --color-signal: var(--signal);
+  --color-signal-dim: var(--signal-dim);
+  --color-interactive: var(--interactive);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-danger-solid: var(--danger-solid);
+  --color-grid: var(--grid);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+
+  /* Corner radii live in ONE file: styles/radius.css (scale dial + steps). */
+}
+
+/* ─── LIGHT · "Cream" ──────────────────────────────────────────────────────
+   THE SAME LADDER, MIRRORED — and deliberately NOT darkened (T612).
+
+   Dark mode got its panels pushed down because a dark theme reads as tooling
+   when its surfaces stay low. Light mode's depth convention is the OPPOSITE:
+   raised means LIGHTER, because the mental model is paper lit from above, so
+   the white card floats on the tinted ground. Darkening light panels does not
+   read as professional, it reads as dirty — so light takes the STRUCTURAL half
+   of the change (even steps, and the popover/card split) and none of the
+   darkening.
+
+     background   #fdfdfc   Radix Sand 1 — the desk
+     surface      #f9f9f8   Sand 2 — docked chrome
+     surface-2    #f1f0ef   Sand 3 — floating panel — the threads rail
+     popover      #f9f9f8   Sand 2 — overlays (SPLIT from card, see the dark note)
+     card         #ffffff   the raised plane, pure white
+
+   Note the mirror: dark ELEVATES a panel ~6 L* above the desk, light RECESSES
+   it ~6 L* below. Same depth, opposite direction, because each follows its own
+   convention rather than one being a numeric inversion of the other. */
+:root {
+  /* Single source of truth for every primary sidebar / rail width.
+     All top-level sidebars (fleet, threads, settings, finder) read this.
+
+     312px is 240 × 1.3. Widened because the two content rails outgrew it: a
+     thread row carries a title AND a preview line, and the settings rail's
+     rows carry a label AND a blurb, so at 240 both were truncating the second
+     line on almost every row. The Finder rail rides along deliberately —
+     making it the one narrow rail would break the uniformity the rails are
+     built to have. */
+  --sidebar-w: 312px;
+  --background: #fdfdfc;
+  --surface: #f9f9f8; /* docked chrome — Finder bars, sidebars */
+  --surface-2: #f1f0ef; /* floating panel — the threads rail */
+  --card: #fff; /* the raised plane */
+  --popover: #f9f9f8; /* overlays — split from `card` so cards lift off them */
+  --foreground: #21201c;
+  --muted: #f1f0ef;
+  --muted-foreground: #63635e; /* AA (>=4.5:1) on every light surface, incl. surface-2 and muted */
+
+  /* Borders are OFF — see the "No borders, only shadows" note further down.
+     `--border-strong` keeps the real hairline colour for the few places that
+     still draw one on purpose. */
+  --border: transparent;
+  --border-strong: #dad9d6;
+  --input: #80807a; /* field edge — 3:1 non-text contrast on every light surface (WCAG 1.4.11) */
+  --grid: #e9e8e6;
+  --primary: #0a5fd0; /* blue — primary actions; 5.9:1 under its label */
+  --primary-foreground: #fff;
+  --accent: #4e7a82; /* teal — secondary accent */
+  --accent-foreground: #fff;
+  --ring: #2f78e0; /* focus ring — 3:1 on every light surface */
+  --signal: #0a5fd0; /* accent text / active — AA on every light surface */
+  --signal-dim: #a9c8f5;
+  --interactive: #487078; /* links / info — AA */
+  --ok: #1f7a52; /* AA text */
+  --warn: #9a5a00; /* AA text */
+  --lit: var(--signal); /* sidebar agent light — same hue as the old status dot */
+  --unlit: #80807a; /* sidebar agent square off — 3:1 non-text on every light surface */
+  --alarm: #e0201a; /* sidebar agent square when the TUI shows ⚠ — pure red */
+  --danger: #c42a2f; /* AA text */
+  --danger-solid: #c42a2f; /* filled destructive background — white label 5.5:1 */
+  --shadow-color: 30deg 30% 60%;
+  --shadow-card: 0 1px 2px hsl(var(--shadow-color) / 12%), 0 4px 12px hsl(var(--shadow-color) / 8%);
+  --shadow-pop: 0 8px 28px hsl(var(--shadow-color) / 18%);
+  --shadow-modal: 0 16px 48px hsl(var(--shadow-color) / 26%);
+
+  color-scheme: light;
+}
+
+/* ─── DARK · "Dungeon Forge" (TUI D&D theme) ───────────────────────────── */
+
+/* The Context Pilot TUI's "D&D" palette, lifted verbatim: a warm-neutral
+   charcoal dungeon lit by a single blue accent. Greys carry the
+   structure, blue carries every active/primary signal, near-white is the
+   ink. Forest-green / gold / blood-red round out ok·warn·danger.
+   Source greys: #222220 · #333331 · #424240 — accent blue #4C9AFF.
+
+   ── THE GREY LADDER (T612) ────────────────────────────────────────────────
+   The greys below are no longer three source values plus improvised
+   in-betweens; they are ONE ordered ladder, each rung a near-equal step in
+   perceptual lightness (CIE L*, not hex arithmetic — hex is not linear in
+   perception, which is why evenly-spaced hex codes look unevenly spaced):
+
+     background     #111110   Radix Sand dark 1 — the desk (phone keeps #000)
+     grid           #191918   Sand 2 — rules drawn ON the desk
+     surface        #222221   Sand 3 — docked chrome (Finder bars, sidebar)
+     surface-2      #2a2a28   Sand 4 — floating panel (threads rail)
+     popover        #2a2a28   Sand 4 — anything that OPENS over the app
+     muted          #31312e   Sand 5 — inline fills, hover washes
+     card           #3b3a37   Sand 6 — the raised plane: rows, tiles, tabs
+     border-strong  #494844   Sand 7 — the opt-in hairline
+     input          #95948f   form outlines, 3:1 on every rung
+
+   Two properties are load-bearing, and both were violated before:
+
+   1. MONOTONIC. Read top to bottom, lightness only ever increases, so a
+      token's rung IS its depth — an element painted `card` is above one
+      painted `surface-2` by construction, in every view, without anyone
+      checking.
+
+   2. POPOVER ≠ CARD. These held the SAME value (#424240), so a card inside a
+      dialog had zero tonal lift off the dialog's own surface and depended
+      entirely on a border — which has been transparent since T605. Content in
+      AgentModal and NewThreadDialog was flat against its container and nobody
+      had noticed. Splitting the two repairs it and is why a dialog can now
+      hold cards that visibly sit on top of it.
+
+   The whole ladder also sits LOWER than it did (top rung 27.9 → 24.4 L*). A
+   dark theme whose panels crowd the upper-middle greys reads washed out; the
+   restraint is what makes it read as tooling rather than as a dimmed light
+   theme. Range 13.1–24.4 is in the same territory as VS Code Dark+ and GitHub
+   dark. The accents are untouched, so they now carry MORE of the eye's
+   attention, not less.
+
+   Reverting is a nine-value edit in this block. Nothing outside it moved. */
+.dark {
+  --background: #111110; /* pure black — app background */
+  --surface: #222221; /* docked chrome — Finder bars, sidebars (TUI bg_surface) */
+  --surface-2: #2a2a28; /* floating panel — the threads rail */
+  --card: #3b3a37; /* raised card (TUI bg_elevated) */
+  --popover: #2a2a28; /* overlays: dialog · dropdown · sheet · tooltip · menu */
+  --foreground: #eeeeec; /* near-white ink (TUI text) */
+  --muted: #31312e; /* subtle warm-grey fill */
+  --muted-foreground: #b5b3ad; /* dimmed labels — AA on every dark surface incl. card */
+
+  /* Borders are OFF — see the "No borders, only shadows" note further down. */
+  --border: transparent;
+  --border-strong: #494844; /* the opt-in hairline — rung above `card` */
+  --input: #95948f; /* form outlines — 3:1 non-text contrast on every dark surface */
+  --grid: #191918; /* rules drawn ON the desk, so BELOW every chrome rung */
+  --primary: #4c9aff; /* blue — primary actions / your-turn */
+  --primary-foreground: #04193a; /* deep navy text on the blue, 6.1:1 */
+  --accent: #2b66c4; /* deep blue — secondary accent; AA under a white label */
+  --accent-foreground: #fff;
+  --ring: #4c9aff;
+  --signal: #7db4ff; /* blue, text-safe — AA on every dark surface incl. card */
+  --signal-dim: #2b5fae;
+  --interactive: #58c4d8; /* cyan — links / info, distinct from the blue signal */
+  --ok: #3dd68c; /* forest green (TUI success) */
+  --warn: #ffca16; /* gold / amber (TUI warning) */
+  --lit: var(--signal); /* sidebar agent light — same hue as the old status dot */
+  --unlit: var(--muted-foreground); /* sidebar agent square off */
+  --alarm: #ff3b30; /* sidebar agent square when the TUI shows ⚠ — pure red */
+  --danger: #ff9592; /* red, text-safe — AA on every dark surface incl. card */
+  --danger-solid: #b94343; /* filled destructive background — white label 5.3:1 */
+  --shadow-color: 45deg 10% 3%;
+  --shadow-card:
+    0 1px 2px hsl(var(--shadow-color) / 55%), 0 4px 14px hsl(var(--shadow-color) / 45%);
+  --shadow-pop: 0 10px 34px hsl(var(--shadow-color) / 60%);
+  --shadow-modal: 0 20px 56px hsl(var(--shadow-color) / 72%);
+
+  color-scheme: dark;
+}
+
+/* ─── DARK · mobile override ────────────────────────────────────────────
+   On a phone, dark mode reads more "pro" as a true black backdrop rather
+   than the desktop's warm charcoal (#222220). The `.mobile` class is set on
+   <html> by the mobile Root at first paint (it can't be a CSS media query:
+   the desktop/mobile split is a JS matchMedia probe — `(pointer: coarse)`
+   included — that a `max-width` query would desync from). Only --background
+   goes black; --surface / --card keep their charcoal so composer, cards and
+   the thread drawer still float visibly ABOVE the black base (depth intact,
+   not one flat black slab). */
+.dark.mobile {
+  --background: #000; /* true black app backdrop (phone) */
+}
+
+/* ─── Mobile: no document rubber-band ───────────────────────────────────
+   On iOS a drag that starts inside a scroller ALREADY at its top/bottom edge
+   chains up to the document and rubber-bands the WHOLE viewport — which drags
+   even `fixed`/`absolute` chrome (the floating bottom bar) with it. It reads as
+   "the whole app scrolls, including the bar that was meant to be pinned", and
+   feels random because it only fires when the inner scroller has no room left
+   in the drag direction (e.g. dragging down from the top of the agents list).
+   `overscroll-behavior: none` stops the scroll chain at the document so an
+   at-the-edge drag is simply absorbed — inner scrollers still scroll normally,
+   only the viewport-level bounce is gone. Scoped to `.mobile` (set on <html> by
+   the mobile Root) so the desktop app is untouched. */
+html.mobile,
+html.mobile body {
+  overscroll-behavior: none;
+}
+
+/* ─── Mobile shell height: fill the physical screen, both ends ───────────
+   The mobile Root's outer shell carries `.mobile-shell`. Its height is NOT
+   `100dvh`/`height:100%`: in a standalone home-screen app iOS WebKit resolves
+   both to the SAFE-AREA viewport, stopping ~34px short of the physical bottom
+   and leaving a dead "chin" band at the home indicator (r/PWA field study,
+   T643). Fork the height:
+     • home-screen app (`html.mobile.standalone`) → `100vh`, the large viewport
+       that DOES reach the true screen bottom under viewport-fit=cover +
+       black-translucent (index.html);
+     • plain Safari tab (`html.mobile` without `.standalone`) → `100dvh`, which
+       tracks the visible viewport so the composer isn't pushed under the URL
+       bar (100vh would overshoot there — T617).
+   `.standalone` is set on <html> by the mobile Root (navigator.standalone /
+   display-mode:standalone). With the black-translucent status bar this fills
+   the screen at BOTH ends — content flows under the status bar, background
+   reaches the true bottom. */
+html.mobile .mobile-shell {
+  height: 100dvh;
+}
+
+html.mobile.standalone .mobile-shell {
+  height: 100vh;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  /* Tailwind v4 dropped the pointer cursor on buttons; restore it. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+
+    transition:
+      background-color 0.35s ease,
+      color 0.35s ease;
+  }
+
+  /* Refined macOS-style scrollbars — slim, subtle, no track. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--muted-foreground) 35%, transparent);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: var(--radius-full);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
+    background-clip: content-box;
+  }
+}
+
+/*
+  ── utility helpers (kept for API compatibility, restyled for the new look) ──
+*/
+
+/* tiny chrome label — refined, low-key */
+.label {
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+/* Hidden-but-scrollable — an épuré scroll surface with NO visible scrollbar,
+   yet still fully scrollable (wheel / trackpad / drag). Used by the thread
+   aside's inline file viewer so the preview reads as a clean, chromeless
+   page. Covers all three engines: Firefox (scrollbar-width), old Edge
+   (-ms-overflow-style), and WebKit/Chromium (::-webkit-scrollbar). */
+.scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+/* soft macOS card elevation */
+.card-shadow {
+  box-shadow: var(--shadow-card);
+}
+
+.pop-shadow {
+  box-shadow: var(--shadow-pop);
+}
+
+.etch {
+  box-shadow: var(--shadow-card);
+}
+
+/* blinking caret */
+@keyframes blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.cursor-blink {
+  animation: blink 1.1s step-end infinite;
+}
+
+/* Looping left-to-right fill for a thread's in-progress task segment: a green
+   overlay grows 0→100% of the fixed-width blue segment, then snaps back and
+   repeats — a continuous "work ongoing" pulse. See RowProgress in ThreadList. */
+@keyframes progress-sweep {
+  from {
+    width: 0%;
+  }
+
+  to {
+    width: 100%;
+  }
+}
+
+/*
+  ── Finder polish ────────────────────────────────────────────────────────
+  Apple-grade micro-motion: QuickLook pop, a soft checkerboard for image
+  transparency, and a marching-ants drop border. (Entry/staggered-item
+  animations were removed per the "no entry animation on main content" rule —
+  see the note by the modal keyframes.)
+*/
+
+@keyframes menu-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-3px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.menu-pop {
+  transform-origin: top left;
+  animation: menu-pop 0.14s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* checkerboard — transparency backing for image previews */
+.checker {
+  background-image:
+    linear-gradient(
+      45deg,
+      color-mix(in oklab, var(--muted-foreground) 22%, transparent) 25%,
+      transparent 25%
+    ),
+    linear-gradient(
+      -45deg,
+      color-mix(in oklab, var(--muted-foreground) 22%, transparent) 25%,
+      transparent 25%
+    ),
+    linear-gradient(
+      45deg,
+      transparent 75%,
+      color-mix(in oklab, var(--muted-foreground) 22%, transparent) 75%
+    ),
+    linear-gradient(
+      -45deg,
+      transparent 75%,
+      color-mix(in oklab, var(--muted-foreground) 22%, transparent) 75%
+    );
+  background-size: 16px 16px;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+}
+
+/* marching-ants drag border */
+@keyframes ants {
+  to {
+    background-position:
+      16px 0,
+      -16px 100%,
+      0 -16px,
+      100% 16px;
+  }
+}
+
+.ants {
+  background-image:
+    linear-gradient(90deg, var(--signal) 50%, transparent 0),
+    linear-gradient(90deg, var(--signal) 50%, transparent 0),
+    linear-gradient(0deg, var(--signal) 50%, transparent 0),
+    linear-gradient(0deg, var(--signal) 50%, transparent 0);
+  background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
+  background-size:
+    16px 2px,
+    16px 2px,
+    2px 16px,
+    2px 16px;
+  background-position:
+    0 0,
+    0 100%,
+    0 0,
+    100% 0;
+  animation: ants 0.6s linear infinite;
+}
+
+/* ── modal polish ─────────────────────────────────────────────────────── */
+@keyframes backdrop-fade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.backdrop-fade {
+  animation: backdrop-fade 0.22s ease both;
+}
+
+@keyframes modal-pop {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.modal-pop {
+  animation: modal-pop 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Linear-style composer dialog: anchored near the top (no vertical centering
+   transform to fight), springs down + scales up on open, lifts + fades on
+   close. Kept separate from modal-pop so the top-anchored surfaces don't
+   inherit the centered surfaces' translate. */
+@keyframes sheet-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes sheet-pop-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+  }
+}
+
+/* finder icon-size slider — slim macOS track + accent thumb */
+.finder-slider {
+  appearance: none;
+  -webkit-appearance: none;
+  background: color-mix(in oklab, var(--muted-foreground) 35%, transparent);
+  border-radius: var(--radius-full);
+}
+
+.finder-slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-full);
+  background: var(--signal);
+  border: 2px solid var(--card);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+}
+
+.finder-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-full);
+  background: var(--signal);
+  border: 2px solid var(--card);
+  cursor: pointer;
+}
+
+/*
+  ── highlight.js theme (Finder code previews, T280) ──────────────────────
+  Maps highlight.js token classes onto the app's semantic tokens so code
+  colouring tracks BOTH palettes (no hard-coded hex). Kept deliberately small
+  and legible — comments dim, keywords on the blue signal, strings green,
+  numbers/literals the interactive accent, types/titles the warn amber.
+*/
+.hljs {
+  color: color-mix(in oklab, var(--foreground) 90%, transparent);
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in,
+.hljs-meta,
+.hljs-doctag {
+  color: var(--signal);
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+  color: var(--ok);
+}
+
+.hljs-number,
+.hljs-literal,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-link {
+  color: var(--interactive);
+}
+
+.hljs-title,
+.hljs-class .hljs-title,
+.hljs-type,
+.hljs-attr,
+.hljs-attribute,
+.hljs-name,
+.hljs-section,
+.hljs-selector-id,
+.hljs-selector-class {
+  color: var(--warn);
+}
+
+.hljs-params,
+.hljs-property {
+  color: color-mix(in oklab, var(--foreground) 80%, transparent);
+}
+
+.hljs-deletion {
+  color: var(--danger);
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 600;
+}
+
+/* ── No borders, only shadows ────────────────────────────────────────────
+   Depth is carried by elevation (`card-shadow` / `pop-shadow`), never by a
+   hairline. Rather than delete ~340 `border-border` class names across the
+   tree, the TOKEN is set to `transparent` in both palettes above. Three
+   things follow, and all three are the reason it is done this way:
+
+     * `border-width` stays 1px, so NOTHING reflows — the change is purely
+       visual, with no element resizing by 2px and no layout shift;
+     * the ~20 hairline DIVIDERS painted with `bg-border` (a border in all but
+       name — dropdown separators, toolbar ticks, the thread-open rule) go too,
+       in the same stroke, which a `border-width` reset would have missed;
+     * a rule that swaps the border to an explicit colour on interaction —
+       `focus:border-ring`, `focus-within:border-(--signal)/60` — still works.
+       The border is invisible at rest and appears on focus, which is exactly
+       the behaviour wanted and is free here.
+
+   NOT affected, deliberately:
+     * `--input` — form fields keep their outline. An invisible text box is a
+       usability bug, not a clean design.
+     * explicitly-coloured borders (`border-(--signal)`, `border-(--danger)/40`,
+       the marquee band, dashed drop zones) — those are accents and
+       affordances, not chrome.
+
+   To opt a component back IN, point it at `border-(--border-strong)`, which
+   holds each palette's real hairline colour. The view-tab group and the
+   light/dark toggle do exactly that.
+
+   Reverting the whole decision = restoring the two `--border` values. */
+
+/* Corner radii: see styles/radius.css — the only place a radius is defined.
+   (The old blanket `border-radius: 0 !important` reset is gone.) */
+
+/* Sidebar agent title (AgentList): hovering the title text draws an underline in from
+   the left; on leave it slides out to the right. The anchor flips with the
+   hover state, so the bar always exits in the direction it was drawn. */
+.agent-title {
+  padding-bottom: 2px;
+  background: linear-gradient(
+      color-mix(in oklab, currentcolor 25%, transparent),
+      color-mix(in oklab, currentcolor 25%, transparent)
+    )
+    no-repeat right bottom / 0 1.5px;
+  cursor: pointer;
+  transition: background-size 380ms cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.agent-title:hover {
+  background-position: left bottom;
+  background-size: 100% 1.5px;
+  transition-duration: 320ms;
+  transition-timing-function: cubic-bezier(0.7, 0, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-title {
+    transition: none;
+  }
+}

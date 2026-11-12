@@ -1,0 +1,7 @@
+#!/bin/sh
+# rb: command line of the Retroback engine. See `rb help`.
+# Follows a symlink, so `ln -s "$PWD/bin/rb" /usr/local/bin/rb` works.
+SELF="$0"
+[ -L "$SELF" ] && SELF="$(readlink "$SELF")"
+ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
+exec "$ROOT/engine/node_modules/.bin/tsx" "$ROOT/engine/src/cli.ts" "$@"

@@ -1,0 +1,87 @@
+import type { ReactNode } from "react"
+import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip"
+
+import { cn } from "@/lib/utils"
+
+/**
+ * `Tip` — the app-wide tooltip wrapper (T25).
+ *
+ * Wraps any single trigger element and shows a small, portaled popup on
+ * hover/focus that *names* a control and optionally *explains* it — ideal for
+ * the app's jargon buttons (Agents / Cockpit / Finder / Conversation …) and
+ * the many icon-only controls whose meaning isn't obvious.
+ *
+ * Composed straight from the Base-UI tooltip primitive (rather than the generic
+ * `TooltipContent`) so we own the popup surface *and* its arrow: both read from
+ * the theme's `--popover` token, so the chip looks native in light and dark and
+ * never clashes. Portaled to `document.body`, escaping the TopBar's `.vibrancy`
+ * backdrop-filter containing block (the same fix dialogs use). Focus + keyboard
+ * a11y come for free.
+ *
+ * The shared {@link TooltipProvider} (mounted once at the app root) governs the
+ * open delay so every tooltip across the app feels consistent and intentional.
+ */
+export function Tip({
+  title,
+  body,
+  side = "bottom",
+  sideOffset = 7,
+  triggerClassName,
+  tabbable = true,
+  open,
+  children,
+}: {
+  title: ReactNode
+  body?: ReactNode | undefined
+  side?: "top" | "bottom" | "left" | "right" | undefined
+  sideOffset?: number | undefined
+  /** Class for the trigger wrapper span — e.g. `block` to preserve full-width children. */
+  triggerClassName?: string | undefined
+  /**
+   * Make the wrapper span a tab stop (default). Pass false when the child is
+   * already focusable (a button, an input): a second stop would double every
+   * Tab press, and focus inside the child still opens the tip.
+   */
+  tabbable?: boolean | undefined
+  /** Force the tip open or shut (e.g. an inline error); hover-driven when omitted. */
+  open?: boolean | undefined
+  children: ReactNode
+}) {
+  return (
+    <TooltipPrimitive.Root {...(open === undefined ? {} : { open })}>
+      <TooltipPrimitive.Trigger
+        render={(props) => {
+          // `tabIndex: 0` keeps the tooltip reachable by keyboard even when the
+          // wrapped content is non-interactive (e.g. a plain label/icon). Seeded
+          // first so an explicit tabIndex on `props` still wins.
+          const seed = tabbable ? { tabIndex: 0 } : {}
+          const merged = { ...seed, ...props, className: cn(props.className, triggerClassName) }
+          return <span {...merged}>{children}</span>
+        }}
+      />
+      <TooltipPrimitive.Portal>
+        <TooltipPrimitive.Positioner side={side} sideOffset={sideOffset} className="z-modal">
+          <TooltipPrimitive.Popup
+            className={cn(
+              "flex max-w-pop-sm flex-col gap-1 rounded-lg border border-border bg-popover px-3 py-2 text-left",
+              "shadow-pop outline-none",
+              "origin-(--transform-origin) transition-[transform,opacity] duration-fast",
+              "data-[starting-style]:scale-95 data-[starting-style]:opacity-0",
+              "data-[ending-style]:scale-95 data-[ending-style]:opacity-0",
+            )}
+          >
+            <TooltipPrimitive.Arrow className="data-[side=bottom]:-top-[5px] data-[side=top]:-bottom-[5px] data-[side=left]:-right-[5px] data-[side=right]:-left-[5px]">
+              <span className="block size-3 rotate-45 rounded-xs border-b border-r border-border bg-popover" />
+            </TooltipPrimitive.Arrow>
+            <span className="text-callout font-semibold leading-tight text-foreground">
+              {title}
+            </span>
+            {body ? (
+              <span className="text-subhead leading-snug text-muted-foreground">{body}</span>
+            ) : null}
+          </TooltipPrimitive.Popup>
+        </TooltipPrimitive.Positioner>
+      </TooltipPrimitive.Portal>
+    </TooltipPrimitive.Root>
+  )
+}

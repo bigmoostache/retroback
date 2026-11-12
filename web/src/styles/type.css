@@ -1,0 +1,67 @@
+/*
+  ── Type scale — macOS HIG text styles ───────────────────────────────────
+  One named step per HIG style (px = pt on the web), each with its line height
+  and SF Pro's size-dependent tracking. `text-body`, `text-callout`, … set all
+  three at once, so tracking is never hand-picked at a call site.
+
+    caption   10/13  +0.12px   Footnote / Caption — the 10pt minimum, nothing smaller
+    subhead   11/14  +0.06px   Subheadline
+    callout   12/15   0
+    body      13/16  -0.08px   macOS default
+    title3    15/20  -0.23px
+    title2    17/22  -0.43px
+    title1    22/26  -0.26px
+    display   28/34  +0.38px   large numerals and empty-state headings
+
+  Apple's own `NSFont` tracking table, 1/1000 em converted to px at each size.
+  Tailwind's own `text-xs|sm|base|lg|xl|2xl` are remapped onto the same steps so
+  untouched call sites land on the scale too.
+*/
+
+/* Tailwind v4 requires the `--text-<step>--line-height|letter-spacing` names. */
+/* stylelint-disable custom-property-pattern */
+@theme inline {
+  --text-caption: 10px;
+  --text-caption--line-height: 13px;
+  --text-caption--letter-spacing: 0.12px;
+  --text-subhead: 11px;
+  --text-subhead--line-height: 14px;
+  --text-subhead--letter-spacing: 0.06px;
+  --text-callout: 12px;
+  --text-callout--line-height: 15px;
+  --text-callout--letter-spacing: 0;
+  --text-body: 13px;
+  --text-body--line-height: 16px;
+  --text-body--letter-spacing: -0.08px;
+  --text-title3: 15px;
+  --text-title3--line-height: 20px;
+  --text-title3--letter-spacing: -0.23px;
+  --text-title2: 17px;
+  --text-title2--line-height: 22px;
+  --text-title2--letter-spacing: -0.43px;
+  --text-title1: 22px;
+  --text-title1--line-height: 26px;
+  --text-title1--letter-spacing: -0.26px;
+  --text-display: 28px;
+  --text-display--line-height: 34px;
+  --text-display--letter-spacing: 0.38px;
+  --text-xs: 11px;
+  --text-xs--line-height: 14px;
+  --text-xs--letter-spacing: 0.06px;
+  --text-sm: 13px;
+  --text-sm--line-height: 16px;
+  --text-sm--letter-spacing: -0.08px;
+  --text-base: 13px;
+  --text-base--line-height: 16px;
+  --text-base--letter-spacing: -0.08px;
+  --text-lg: 15px;
+  --text-lg--line-height: 20px;
+  --text-lg--letter-spacing: -0.23px;
+  --text-xl: 17px;
+  --text-xl--line-height: 22px;
+  --text-xl--letter-spacing: -0.43px;
+  --text-2xl: 22px;
+  --text-2xl--line-height: 26px;
+  --text-2xl--letter-spacing: -0.26px;
+}
+/* stylelint-enable custom-property-pattern */

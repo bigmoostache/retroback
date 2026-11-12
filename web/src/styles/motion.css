@@ -1,0 +1,160 @@
+/*
+  ── Layering, opacity and duration tokens — single source of truth ───────
+  Tailwind v4 turns each theme variable into a utility, so call sites write
+  `z-modal`, `opacity-muted`, `duration-base` and never a bare number.
+
+    z        base 0 · raised 10 · sticky 20 · overlay 40 · modal 50 · toast 60
+    opacity  disabled .4 · muted .6 · hover .8 · subtle .9
+             (`opacity-0` and `opacity-100` stay: hidden and fully shown)
+    duration fast 150ms · base 250ms · slow 500ms
+             (the 1s spinner is its own `animate-spin`, not a duration step)
+*/
+@theme inline {
+  --z-index-base: 0;
+  --z-index-raised: 10;
+  --z-index-sticky: 20;
+  --z-index-overlay: 40;
+  --z-index-modal: 50;
+  --z-index-toast: 60;
+  --opacity-disabled: 0.4;
+  --opacity-muted: 0.6;
+  --opacity-hover: 0.8;
+  --opacity-subtle: 0.9;
+  --transition-duration-fast: 150ms;
+  --transition-duration-base: 250ms;
+  --transition-duration-slow: 500ms;
+
+  /* Surface widths: `w-dialog-lg`, `max-w-pop-md`. Dialogs 480/560/720/920/1120,
+     popovers and menus 240/280/320. */
+  --container-dialog-sm: 30rem;
+  --container-dialog-md: 35rem;
+  --container-dialog-lg: 45rem;
+  --container-dialog-xl: 57.5rem;
+  --container-dialog-2xl: 70rem;
+  --container-pop-sm: 15rem;
+  --container-pop-md: 17.5rem;
+  --container-pop-lg: 20rem;
+}
+
+/* Shadows change per theme (`--shadow-*` in index.css :root / .dark), so the
+   utilities read the variable at use time instead of freezing a theme value. */
+@utility shadow-card {
+  box-shadow: var(--shadow-card);
+}
+
+@utility shadow-pop {
+  box-shadow: var(--shadow-pop);
+}
+
+@utility shadow-modal {
+  box-shadow: var(--shadow-modal);
+}
+
+/* Dimmed states: offline surface and drag-over. Pair with `transition-[filter] duration-base`. */
+@utility disconnected-dim {
+  filter: blur(3px) grayscale(0.5);
+}
+
+@utility drag-dim {
+  filter: blur(2px);
+}
+
+/*
+  ── Accessibility media features (HIG · Accessibility) ───────────────────
+  Reduce Motion, Reduce Transparency and forced colors (Windows High Contrast).
+  Every overlay animation is referenced by keyframe NAME (`modal-pop`,
+  `sheet-pop-*`, `menu-pop`), so redefining the keyframes inside the media query
+  re-skins every call site at once — no class names change.
+*/
+
+/* Reduce Motion: replace zoom / translate with a plain fade, stop loops. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes modal-pop {
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes sheet-pop-in {
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes sheet-pop-out {
+    from {
+      opacity: 1;
+    }
+
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes menu-pop {
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
+  }
+
+  .ants,
+  .animate-pulse,
+  .cursor-blink {
+    animation: none;
+  }
+
+  .backdrop-fade {
+    animation-duration: 0.01ms;
+  }
+
+  /* Spinners stay (they carry meaning) but turn slowly. */
+  .animate-spin {
+    animation-duration: 2.5s;
+  }
+
+  body {
+    transition: none;
+  }
+}
+
+/* Reduce Transparency: no blur, opaque surfaces. */
+@media (prefers-reduced-transparency: reduce) {
+  * {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+/* Forced colors: the OS palette wins; keep focus and edges visible. */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  input,
+  textarea,
+  select {
+    border: 1px solid ButtonText;
+  }
+
+  .finder-slider::-webkit-slider-thumb {
+    background: Highlight;
+  }
+
+  .finder-slider::-moz-range-thumb {
+    background: Highlight;
+  }
+}

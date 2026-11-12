@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Retroback: plan backward from a target to the present." />
+    <title>Retroback</title>
+    <!-- Set the theme class before first paint to avoid a light-to-dark flash.
+         Mirrors src/lib/providers/theme.tsx: the saved preference, otherwise
+         the OS `prefers-color-scheme`. -->
+    <script>
+      ;(function () {
+        try {
+          var t = localStorage.getItem("cp-theme")
+          if (t !== "light" && t !== "dark") {
+            t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+          }
+          if (t === "dark") document.documentElement.classList.add("dark")
+        } catch (e) {}
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

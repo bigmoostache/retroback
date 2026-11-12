@@ -1,0 +1,47 @@
+/*
+  ── Corner radius — THE single source of truth ───────────────────────────
+  Every corner in the app resolves through this file and nothing else.
+
+    --radius-scale   one dial.  1 = Apple (default) · 0 = fully square ·
+                     1.5 = softer.  Changing this ONE line restyles the app.
+    --radius-<step>  the named steps (px at scale 1). Edit a step to retune
+                     one tier without touching the others.
+
+  Reach:
+    * `rounded-xs|sm|md|lg|xl|2xl|3xl|full` and bare `rounded` read the steps
+      below (the `@theme` block + the two `@utility` overrides);
+    * the scrollbar thumb, the Finder slider and inline styles read
+      `var(--radius-*)` directly — no hard-coded radius lives anywhere else;
+    * there is NO blanket `border-radius: 0 !important` reset any more.
+
+  Apple's radii are concentric: a child's radius = parent radius − padding, so
+  nested surfaces step down (dialog 14 → card 10 → control 6 → chip 4).
+
+  `--radius-full` is a pill. A scale of 0 squares it too; any non-zero scale
+  keeps it a pill (a pill is "as round as possible", not a size).
+*/
+:root {
+  --radius-scale: 1;
+}
+
+@theme inline {
+  --radius-xs: calc(2px * var(--radius-scale));
+  --radius-sm: calc(4px * var(--radius-scale));
+  --radius-md: calc(6px * var(--radius-scale));
+  --radius-lg: calc(8px * var(--radius-scale));
+  --radius-xl: calc(10px * var(--radius-scale));
+  --radius-2xl: calc(14px * var(--radius-scale));
+  --radius-3xl: calc(18px * var(--radius-scale));
+  --radius-4xl: calc(24px * var(--radius-scale));
+  --radius-full: calc(9999px * var(--radius-scale));
+}
+
+/* Tailwind emits literal values for these two, not theme tokens — route them
+   through the scale so they follow it like every other step. */
+@utility rounded {
+  border-radius: var(--radius-sm);
+}
+
+@utility rounded-full {
+  border-radius: var(--radius-full);
+}

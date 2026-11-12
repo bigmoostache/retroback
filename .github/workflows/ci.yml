@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: retroback
+          POSTGRES_PASSWORD: retroback
+          POSTGRES_DB: retroback
+        ports: ["55440:5432"]
+        options: >-
+          --health-cmd "pg_isready -U retroback" --health-interval 2s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql://retroback:retroback@127.0.0.1:55440/retroback
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm typecheck
+      - name: Migrate
+        run: pnpm --filter engine exec prisma migrate deploy
+      - name: Isometry (rb, rb --api and the API give the same answers)
+        run: |
+          pnpm --filter engine exec tsx src/server.ts > api.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:7979/api/ops > /dev/null && break; sleep 1; done
+          pnpm check:isometry
+      - name: Seed plans pass their check
+        run: pnpm seed
+      - name: Build the web app
+        run: pnpm --filter web build
+      - name: Build the CLI
+        run: pnpm build:cli
+      - name: API log
+        if: failure()
+        run: cat api.log || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: retroback-assets
+          path: |
+            web/dist
+            dist/rb.mjs
+
+  publish:
+    name: publish assets
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: retroback-assets
+          path: assets
+      - name: Package
+        run: |
+          tar -czf retroback-web.tar.gz -C assets/web/dist .
+          cp assets/dist/rb.mjs rb.mjs
+      - name: Update the "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest retroback-web.tar.gz rb.mjs \
+            --title "Latest build of main" \
+            --notes "Built from ${GITHUB_SHA} on every merge to main." \
+            --target "${GITHUB_SHA}" --prerelease
