@@ -72,7 +72,7 @@ export const planDelete = (plan: PlanSummary): OpRequest => ({
 })
 
 /** `before` is the later node the new one makes possible; null adds a node with no link. */
-export function nodeCreate(plan: PlanSummary, before: NodeView | null, onDone: Done): OpRequest {
+export function nodeCreate(plan: PlanSummary, before: { ref: string; title: string } | null, onDone: Done): OpRequest {
   const base = { op: "node.create", fixed: { plan: plan.slug }, submitLabel: "Create", onDone }
   if (before) {
     return {

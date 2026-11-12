@@ -1,7 +1,7 @@
 import type { ReactNode } from "react"
 import { Check, LockOpen, Pencil, Plus, Trash2, X } from "lucide-react"
 import { unlock, unlockSize } from "@engine/graph.ts"
-import type { CheckItem, NodeStatus, NodeView, PlanView } from "@engine/types.ts"
+import type { CheckItem, NodeStatus, NodeView, PlanGraph } from "@engine/types.ts"
 import { CommandHint } from "@/components/ops/CommandLine"
 import { StatusBadge } from "@/components/plan/StatusBadge"
 import { SelectionPill } from "@/components/shell/chrome/SelectionPill"
@@ -178,7 +178,7 @@ export function NodeDetail({
   wide = false,
 }: {
   node: NodeView
-  plan: PlanView
+  plan: PlanGraph
   run: Engine["run"]
   ask: Ask
   onSelect: (ref: string) => void
@@ -187,7 +187,8 @@ export function NodeDetail({
   /** Takes the whole width (under the graph) instead of a side column. */
   wide?: boolean | undefined
 }) {
-  const titleOf = (ref: string) => plan.nodes.find((n) => n.ref === ref)?.title ?? ""
+  const titles = new Map(plan.nodes.map((n) => [n.ref, n.title]))
+  const titleOf = (ref: string) => titles.get(ref) ?? ""
   const prereqs = new Map(plan.nodes.map((n) => [n.ref, n.dependsOn]))
   // Same answer as `rb node unlock`: both run graph.ts on the same links.
   const unlocked = unlock(plan.nodes, prereqs, node.ref)

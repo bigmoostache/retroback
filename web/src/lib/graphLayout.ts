@@ -9,8 +9,8 @@
  * A link between neighbouring columns is a curve. A link that jumps over
  * columns runs in a lane between two rows, so it never passes under a card.
  */
-import { reducedLinks } from "@engine/graph.ts"
-import type { NodeView, PlanView } from "@engine/types.ts"
+import { depths, reducedLinks } from "@engine/graph.ts"
+import type { GraphNode, PlanGraph } from "@engine/types.ts"
 
 const CARD = { w: 216, h: 112 }
 const MARK = { w: 128, h: 52 }
@@ -28,7 +28,7 @@ export const TARGET = "target"
 export interface GraphItem {
   /** A node ref, or PRESENT or TARGET for the two ends of the plan. */
   id: string
-  node: NodeView | null
+  node: GraphNode | null
   x: number
   y: number
   w: number
@@ -47,6 +47,11 @@ export interface GraphEdge {
   arrow: string
   /** True for the links to the two ends of the plan. */
   dashed: boolean
+  /** Bounding box of the drawn link, to draw only the links in view. */
+  x0: number
+  y0: number
+  x1: number
+  y1: number
 }
 
 export interface GraphLayout {
@@ -81,11 +86,11 @@ function rounded(points: Point[]): string {
   return parts.join(" ")
 }
 
-export function layoutGraph(plan: PlanView): GraphLayout {
+export function layoutGraph(plan: PlanGraph): GraphLayout {
   const nodes = new Map(plan.nodes.map((n) => [n.ref, n]))
   const dir = plan.targetValue >= plan.presentValue ? 1 : -1
   // Same test as the engine's check (rules.ts): the node reaches the target value.
-  const atTarget = (n: NodeView) => n.level !== null && dir * (n.level - plan.targetValue) >= -1e-9
+  const atTarget = (n: GraphNode) => n.level !== null && dir * (n.level - plan.targetValue) >= -1e-9
 
   /** What each item leads to, without the links implied by a longer path. */
   const reduced = reducedLinks(new Map(plan.nodes.map((n) => [n.ref, n.dependsOn])))
@@ -97,20 +102,12 @@ export function layoutGraph(plan: PlanView): GraphLayout {
   for (const [former, next] of reduced) if (nodes.has(next)) later.get(former)?.unshift(next)
   const ids = [PRESENT, ...plan.nodes.map((n) => n.ref), TARGET]
 
-  // Steps left after each item, by the longest way.
-  const steps = new Map<string, number>()
-  const stepsOf = (id: string, path = new Set<string>()): number => {
-    const known = steps.get(id)
-    if (known !== undefined) return known
-    // The engine refuses loops; never hang on one.
-    if (path.has(id)) return 0
-    path.add(id)
-    const value = Math.max(-1, ...(later.get(id) ?? []).map((next) => stepsOf(next, path))) + 1
-    path.delete(id)
-    steps.set(id, value)
-    return value
-  }
-  const last = Math.max(1, ...ids.map((id) => stepsOf(id)))
+  // Steps left after each item, by the longest way: the depth of the graph read forward.
+  // Iterative (graph.ts), so long chains never overflow the stack; loops (refused by the engine) get 0.
+  const steps = depths(later)
+  const stepsOf = (id: string) => steps.get(id) ?? 0
+  let last = 1
+  for (const id of ids) last = Math.max(last, stepsOf(id))
   const col = new Map(ids.map((id) => [id, id === PRESENT ? 0 : last - stepsOf(id)]))
   const columns: string[][] = Array.from({ length: last + 1 }, () => [])
   for (const id of ids) columns[col.get(id)!]!.push(id)
@@ -134,11 +131,12 @@ export function layoutGraph(plan: PlanView): GraphLayout {
       free = r + 1
     }
   }
-  const rowCount = Math.max(...row.values()) + 1
+  let rowCount = 1
+  for (const r of row.values()) rowCount = Math.max(rowCount, r + 1)
 
   // Columns are as wide as their widest item.
   const size = (id: string) => (nodes.has(id) ? CARD : MARK)
-  const colW = columns.map((list) => Math.max(0, ...list.map((id) => size(id).w)))
+  const colW = columns.map((list) => list.reduce((w, id) => Math.max(w, size(id).w), 0))
   const colX: number[] = []
   let x = PAD
   for (const w of colW) {
@@ -172,9 +170,11 @@ export function layoutGraph(plan: PlanView): GraphLayout {
     }),
   )
   const lanes: number[] = Array.from({ length: rowCount }, () => 0)
+  const byRow: (typeof links)[] = Array.from({ length: rowCount }, () => [])
+  for (const link of links) if (link.kind === "lane") byRow[link.above]!.push(link)
   for (let r = 0; r < rowCount; r++) {
     const ends: number[] = []
-    for (const link of links.filter((l) => l.kind === "lane" && l.above === r).sort((a, b) => a.xa - b.xa)) {
+    for (const link of byRow[r]!.sort((a, b) => a.xa - b.xa)) {
       const reuse = ends.findIndex((end) => end + 8 < link.xa)
       link.lane = reuse === -1 ? ends.length : reuse
       ends[link.lane] = link.xb
@@ -208,6 +208,8 @@ export function layoutGraph(plan: PlanView): GraphLayout {
     const bx = v.x
     const by = v.y + v.h / 2
     let d: string
+    let top = Math.min(ay, by)
+    let bottom = Math.max(ay, by)
     if (link.kind === "curve") {
       const mid = (ax + bx) / 2
       d = `M ${ax} ${ay} C ${mid} ${ay} ${mid} ${by} ${bx} ${by}`
@@ -215,6 +217,8 @@ export function layoutGraph(plan: PlanView): GraphLayout {
       d = `M ${ax} ${ay} L ${bx} ${by}`
     } else {
       const ly = rowY[link.above]! - LANE_PAD - link.lane * LANE_STEP
+      top = Math.min(top, ly)
+      bottom = Math.max(bottom, ly)
       d = rounded([
         [ax, ay],
         [link.xa, ay],
@@ -231,6 +235,10 @@ export function layoutGraph(plan: PlanView): GraphLayout {
       d,
       arrow: `M ${bx - ARROW} ${by - ARROW} L ${bx} ${by} L ${bx - ARROW} ${by + ARROW}`,
       dashed: link.from === PRESENT || link.to === TARGET,
+      x0: ax,
+      y0: top - ARROW,
+      x1: bx,
+      y1: bottom + ARROW,
     }
   })
 

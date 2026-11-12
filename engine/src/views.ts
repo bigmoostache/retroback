@@ -1,6 +1,7 @@
 /** Reads the database and builds the shapes of types.ts. */
 import { visiblePlans } from "./access.ts"
 import { db } from "./db.ts"
+import { depths } from "./graph.ts"
 import { OpError } from "./ops/define.ts"
 import { checkPlan, computeGap, direction } from "./rules.ts"
 import { summariseNode } from "./summary.ts"
@@ -9,6 +10,7 @@ import type {
   NodeStatus,
   NodeView,
   PlanBrief,
+  PlanGraph,
   PlanSummary,
   PlanView,
   ResourceTotal,
@@ -53,22 +55,40 @@ export function summarise(
 
 export async function loadPlan(slug?: string): Promise<PlanView> {
   const { id } = await planOf(slug)
+  // One flat query per table, grouped here: much faster than a nested include on large plans.
   const byPosition = { orderBy: { position: "asc" } } as const
-  const plan = await db.plan.findUniqueOrThrow({
-    where: { id },
-    include: {
-      nodes: {
-        orderBy: { seq: "asc" },
-        include: {
-          criteria: byPosition,
-          requirements: { ...byPosition, include: { provider: { select: { ref: true } } } },
-          resources: byPosition,
-          obstacles: byPosition,
-          messages: byPosition,
-        },
-      },
-    },
-  })
+  const where = { node: { planId: id } }
+  const [row, nodeRows, criteria, requirements, resourceRows, obstacles, messages] = await Promise.all([
+    db.plan.findUniqueOrThrow({ where: { id } }),
+    db.node.findMany({ where: { planId: id }, orderBy: { seq: "asc" } }),
+    db.criterion.findMany({ where, ...byPosition }),
+    db.requirement.findMany({ where, ...byPosition }),
+    db.resourceNeed.findMany({ where, ...byPosition }),
+    db.obstacle.findMany({ where, ...byPosition }),
+    db.message.findMany({ where, ...byPosition }),
+  ])
+  const refOf = new Map(nodeRows.map((n) => [n.id, n.ref]))
+  const group = <T extends { nodeId: string }>(rows: T[]) => {
+    const out = new Map<string, T[]>()
+    for (const r of rows) {
+      const list = out.get(r.nodeId)
+      if (list) list.push(r)
+      else out.set(r.nodeId, [r])
+    }
+    return (nodeId: string) => out.get(nodeId) ?? []
+  }
+  const [critOf, reqOf, resOf, obsOf, msgOf] = [group(criteria), group(requirements), group(resourceRows), group(obstacles), group(messages)]
+  const plan = {
+    ...row,
+    nodes: nodeRows.map((n) => ({
+      ...n,
+      criteria: critOf(n.id),
+      requirements: reqOf(n.id).map((r) => ({ ...r, provider: { ref: refOf.get(r.providerId)! } })),
+      resources: resOf(n.id),
+      obstacles: obsOf(n.id),
+      messages: msgOf(n.id),
+    })),
+  }
 
   const byRef = new Map(plan.nodes.map((n) => [n.ref, n]))
   const bySeq = (a: string, b: string) => byRef.get(a)!.seq - byRef.get(b)!.seq
@@ -124,6 +144,14 @@ export async function loadPlan(slug?: string): Promise<PlanView> {
     const result = { start, finish }
     schedMemo.set(ref, result)
     return result
+  }
+
+  // Fill the memos providers first: each call then finds its providers known, so no deep recursion on long chains.
+  const depth = depths(prereqs)
+  const upward = [...prereqs.keys()].sort((a, b) => depth.get(a)! - depth.get(b)!)
+  for (const ref of upward) {
+    measured(ref)
+    schedule(ref)
   }
 
   const nodes: NodeView[] = plan.nodes.map((n) => {
@@ -249,9 +277,61 @@ function ancestorsOf(prereqs: ReadonlyMap<string, readonly string[]>, ref: strin
   return seen
 }
 
-/** Refs that require themselves. The engine refuses such links; this catches old data. */
-const findLoops = (prereqs: ReadonlyMap<string, readonly string[]>) =>
-  [...prereqs.keys()].filter((ref) => ancestorsOf(prereqs, ref).has(ref))
+/**
+ * Refs that require themselves: members of a strongly connected component of
+ * more than one node, or with a link to itself. The engine refuses such links;
+ * this catches old data. Iterative Tarjan: linear, no deep recursion.
+ */
+export function findLoops(prereqs: ReadonlyMap<string, readonly string[]>): string[] {
+  const index = new Map<string, number>()
+  const low = new Map<string, number>()
+  const onStack = new Set<string>()
+  const stack: string[] = []
+  const loops: string[] = []
+  let counter = 0
+  for (const root of prereqs.keys()) {
+    if (index.has(root)) continue
+    const work: [string, number][] = [[root, 0]]
+    index.set(root, counter)
+    low.set(root, counter++)
+    stack.push(root)
+    onStack.add(root)
+    while (work.length) {
+      const top = work[work.length - 1]!
+      const [node, i] = top
+      const next = prereqs.get(node) ?? []
+      if (i < next.length) {
+        top[1] = i + 1
+        const p = next[i]!
+        if (!index.has(p)) {
+          index.set(p, counter)
+          low.set(p, counter++)
+          stack.push(p)
+          onStack.add(p)
+          work.push([p, 0])
+        } else if (onStack.has(p)) low.set(node, Math.min(low.get(node)!, index.get(p)!))
+        continue
+      }
+      work.pop()
+      if (work.length) {
+        const parent = work[work.length - 1]![0]
+        low.set(parent, Math.min(low.get(parent)!, low.get(node)!))
+      }
+      if (low.get(node) === index.get(node)) {
+        const component: string[] = []
+        let member: string
+        do {
+          member = stack.pop()!
+          onStack.delete(member)
+          component.push(member)
+        } while (member !== node)
+        if (component.length > 1 || next.includes(node)) loops.push(...component)
+      }
+    }
+  }
+  const order = [...prereqs.keys()]
+  return loops.sort((a, b) => order.indexOf(a) - order.indexOf(b))
+}
 
 export async function loadNode(planSlug: string, ref: string): Promise<NodeView> {
   const plan = await loadPlan(planSlug)
@@ -293,6 +373,30 @@ export function pageNodes(plan: PlanView, { status, ready, after, limit = PAGE }
     total: matching.length,
     nodes: page.map(summariseNode),
     next: more ? page.at(-1)!.ref : null,
+  }
+}
+
+/** The plan in compact form for the graph view (`plan graph`). */
+export function graphOf(plan: PlanView): PlanGraph {
+  const errors = plan.check.issues.filter((i) => i.severity === "error").length
+  return {
+    ...summarise(plan, plan.nodes.length),
+    check: { ok: plan.check.ok, errors, warnings: plan.check.issues.length - errors },
+    nodes: plan.nodes.map((n) => ({
+      ref: n.ref,
+      seq: n.seq,
+      title: n.title,
+      level: n.level,
+      status: n.status,
+      size: n.size,
+      gap: n.gap,
+      finish: n.schedule.finish,
+      due: n.due,
+      ready: n.ready,
+      dependsOn: n.dependsOn,
+      criteria: { total: n.criteria.length, met: n.criteria.filter((c) => c.met).length },
+      obstacles: n.obstacles.filter((o) => o.status === "open").length,
+    })),
   }
 }
 

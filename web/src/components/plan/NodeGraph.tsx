@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type WheelEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject, type WheelEvent } from "react"
 import { Flag, LockOpen, MapPin, Plus, ZoomIn, ZoomOut } from "lucide-react"
 import { openPath, unlock } from "@engine/graph.ts"
-import type { NodeView, PlanView } from "@engine/types.ts"
+import type { GraphNode, NodeView, PlanGraph } from "@engine/types.ts"
 import { PanelHeader } from "@/components/plan/PanelHeader"
 import { StatusBadge } from "@/components/plan/StatusBadge"
 import { Button } from "@/components/ui/button"
@@ -30,8 +30,53 @@ function useZoom() {
 
 const place = (item: GraphItem) => ({ left: item.x, top: item.y, width: item.w, height: item.h })
 
+/** Pixels drawn beyond each side of the view, so a scroll shows no blank before the next frame. */
+const VIEW_MARGIN = 600
+
+interface Viewport {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+/**
+ * The visible part of the scroller, in screen pixels: updated once per frame
+ * on scroll and on resize. Only what falls in it is drawn, so a plan of tens
+ * of thousands of nodes costs what the screen shows.
+ */
+function useViewport(ref: RefObject<HTMLDivElement | null>): Viewport {
+  const [view, setView] = useState<Viewport>({ left: 0, top: 0, width: 1600, height: 900 })
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    let frame = 0
+    const read = () => {
+      frame = 0
+      setView((v) =>
+        v.left === el.scrollLeft && v.top === el.scrollTop && v.width === el.clientWidth && v.height === el.clientHeight
+          ? v
+          : { left: el.scrollLeft, top: el.scrollTop, width: el.clientWidth, height: el.clientHeight },
+      )
+    }
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(read)
+    }
+    read()
+    el.addEventListener("scroll", schedule, { passive: true })
+    const observer = new ResizeObserver(schedule)
+    observer.observe(el)
+    return () => {
+      el.removeEventListener("scroll", schedule)
+      observer.disconnect()
+      if (frame) cancelAnimationFrame(frame)
+    }
+  }, [ref])
+  return view
+}
+
 /** One end of the plan: the present on the left, the target on the right. */
-function End({ item, plan }: { item: GraphItem; plan: PlanView }) {
+function End({ item, plan }: { item: GraphItem; plan: PlanGraph }) {
   const present = item.id === PRESENT
   const Icon = present ? MapPin : Flag
   return (
@@ -62,13 +107,12 @@ function Card({
   onSelect,
 }: {
   item: GraphItem
-  node: NodeView
+  node: GraphNode
   selected: boolean
   mark: Mark
   onSelect: (ref: string) => void
 }) {
-  const met = node.criteria.filter((c) => c.met).length
-  const late = node.due !== null && node.schedule.finish !== null && node.schedule.finish > node.due
+  const late = node.due !== null && node.finish !== null && node.finish > node.due
   return (
     <button
       type="button"
@@ -114,16 +158,16 @@ function Card({
         <span title="Size, 0 to 100" className="font-mono text-muted-foreground tabular-nums">
           s{node.size}
         </span>
-        {node.schedule.finish && (
+        {node.finish && (
           <span
-            title={`Finishes ${node.schedule.finish} at the earliest${node.due ? `, due ${node.due}` : ""}`}
+            title={`Finishes ${node.finish} at the earliest${node.due ? `, due ${node.due}` : ""}`}
             className={cn("tabular-nums", late ? "text-danger" : "text-muted-foreground")}
           >
-            {dayText(node.schedule.finish)}
+            {dayText(node.finish)}
           </span>
         )}
         <span className="ml-auto text-muted-foreground tabular-nums">
-          {met}/{node.criteria.length} criteria
+          {node.criteria.met}/{node.criteria.total} criteria
         </span>
       </span>
     </button>
@@ -144,7 +188,7 @@ export function NodeGraph({
   unlockOf,
   onUnlock,
 }: {
-  plan: PlanView
+  plan: PlanGraph
   selected: string | null
   onSelect: (ref: string) => void
   ask: Ask
@@ -154,24 +198,26 @@ export function NodeGraph({
   onUnlock: (ref: string | null) => void
 }) {
   const layout = useMemo(() => layoutGraph(plan), [plan])
+  const itemOf = useMemo(() => new Map(layout.items.map((item) => [item.id, item])), [layout])
   const scroller = useRef<HTMLDivElement>(null)
   const first = useRef(true)
   const [zoom, setZoom] = useZoom()
+  const view = useViewport(scroller)
   const created = (result: unknown) => onSelect((result as NodeView).ref)
-  const current = plan.nodes.find((n) => n.ref === selected) ?? null
-  const shown = layout.items.find((item) => item.id === selected)
+  const shown = selected === null ? undefined : itemOf.get(selected)
+  const current = shown?.node ?? null
   const left = shown === undefined ? undefined : shown.x * zoom
   const wide = shown === undefined ? undefined : shown.w * zoom
 
   // Same answer as `rb node unlock`: both run graph.ts on the same links.
   const unlocking = useMemo(() => {
-    if (!unlockOf || !plan.nodes.some((n) => n.ref === unlockOf)) return null
+    if (!unlockOf || !itemOf.has(unlockOf)) return null
     const prereqs = new Map(plan.nodes.map((n) => [n.ref, n.dependsOn]))
     return {
       now: new Set(unlock(plan.nodes, prereqs, unlockOf).map((n) => n.ref)),
       path: openPath(plan.nodes, prereqs, unlockOf),
     }
-  }, [plan, unlockOf])
+  }, [plan, unlockOf, itemOf])
   const markOf = (ref: string): Mark =>
     !unlocking ? null : unlocking.now.has(ref) ? "now" : unlocking.path.has(ref) ? "path" : "dim"
 
@@ -232,8 +278,17 @@ export function NodeGraph({
     unlocking !== null && unlocking.path.has(edge.from) && unlocking.path.has(edge.to)
   const touches = (edge: { from: string; to: string }) =>
     unlocking ? onPath(edge) : edge.from === selected || edge.to === selected
+  // Only what is in view, plus a margin, is drawn: in layout units (the view divided by the zoom).
+  const margin = VIEW_MARGIN / zoom
+  const vx0 = view.left / zoom - margin
+  const vy0 = view.top / zoom - margin
+  const vx1 = (view.left + view.width) / zoom + margin
+  const vy1 = (view.top + view.height) / zoom + margin
+  const visibleItems = layout.items.filter((i) => i.x + i.w >= vx0 && i.x <= vx1 && i.y + i.h >= vy0 && i.y <= vy1)
   // The links of the selected node are drawn last, above the others.
-  const edges = [...layout.edges].sort((a, b) => Number(touches(a)) - Number(touches(b)))
+  const edges = layout.edges
+    .filter((e) => e.x1 >= vx0 && e.x0 <= vx1 && e.y1 >= vy0 && e.y0 <= vy1)
+    .sort((a, b) => Number(touches(a)) - Number(touches(b)))
 
   return (
     <section className="card-shadow flex shrink-0 flex-col rounded-2xl bg-surface-2">
@@ -337,7 +392,7 @@ export function NodeGraph({
               )
             })}
           </svg>
-          {layout.items.map((item) =>
+          {visibleItems.map((item) =>
             item.node ? (
               <Card
                 key={item.id}

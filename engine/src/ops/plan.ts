@@ -2,7 +2,7 @@ import { z } from "zod"
 import { assertOwner, currentUser, visiblePlans } from "../access.ts"
 import { db } from "../db.ts"
 import { slugify } from "../slug.ts"
-import { briefOf, loadPlan, planOf, summarise } from "../views.ts"
+import { briefOf, graphOf, loadPlan, planOf, summarise } from "../views.ts"
 import { defineOp, OpError, planFlag } from "./define.ts"
 import { pageFlags } from "./node.ts"
 
@@ -51,6 +51,15 @@ export const planOps = [
       const view = await loadPlan(plan)
       return full ? view : briefOf(view, page)
     },
+  }),
+
+  defineOp({
+    name: "plan.graph",
+    summary:
+      "The plan in compact form, for drawing it: each node's ref, title, level, status, size, gap, finish, due, ready, what it requires, criteria met and open obstacles. Light enough for tens of thousands of nodes.",
+    mutates: false,
+    input: z.strictObject({ plan: planFlag }),
+    run: async ({ plan }) => graphOf(await loadPlan(plan)),
   }),
 
   defineOp({

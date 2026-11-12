@@ -1,6 +1,6 @@
 import { useRef, type ReactNode } from "react"
 import { Flag, MapPin, Plus, type LucideIcon } from "lucide-react"
-import type { NodeView, PlanView } from "@engine/types.ts"
+import type { NodeView, PlanGraph } from "@engine/types.ts"
 import { PanelHeader } from "@/components/plan/PanelHeader"
 import { StatusBadge } from "@/components/plan/StatusBadge"
 import { Button } from "@/components/ui/button"
@@ -11,6 +11,9 @@ import { toCommand } from "@/lib/api"
 import { gapText, levelText, num } from "@/lib/format"
 import { nodeCreate, type Ask } from "@/lib/requests"
 import { cn } from "@/lib/utils"
+
+/** Rows the list draws at most. */
+const LIST_CAP = 200
 
 /** One end of the chain: the target above the nodes, the present below them. */
 function End({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
@@ -33,7 +36,7 @@ export function NodeChain({
   ask,
   tools,
 }: {
-  plan: PlanView
+  plan: PlanGraph
   selected: string | null
   onSelect: (ref: string) => void
   ask: Ask
@@ -41,6 +44,8 @@ export function NodeChain({
 }) {
   const listRef = useRef<HTMLDivElement>(null)
   const created = (result: unknown) => onSelect((result as NodeView).ref)
+  // A long list is cut: the graph or `rb node list --after` reach the rest.
+  const rows = plan.nodes.length > LIST_CAP ? plan.nodes.slice(0, LIST_CAP) : plan.nodes
 
   return (
     <section className="card-shadow flex flex-col rounded-2xl bg-surface-2">
@@ -74,7 +79,7 @@ export function NodeChain({
         <div ref={listRef} className="relative p-2">
           <SelectionGlide containerRef={listRef} selectedId={selected ?? ""} layoutKey={plan.slug} />
           <End icon={Flag} label="Target" value={`${num(plan.targetValue)} ${plan.unit}`} />
-          {plan.nodes.map((node) => (
+          {rows.map((node) => (
             <div key={node.ref} data-row-id={node.ref} className="relative flex items-center gap-1 rounded-lg pr-1">
               <button
                 type="button"
@@ -116,6 +121,12 @@ export function NodeChain({
               />
             </div>
           ))}
+          {rows.length < plan.nodes.length && (
+            <p data-list-cut className="px-3 py-2 text-subhead text-muted-foreground">
+              {LIST_CAP} of {plan.nodes.length} nodes shown. The graph shows them all; so does{" "}
+              <code className="font-mono">rb node list --after {rows.at(-1)!.ref}</code>.
+            </p>
+          )}
           <End icon={MapPin} label="Present" value={`${num(plan.presentValue)} ${plan.unit}`} />
         </div>
       )}

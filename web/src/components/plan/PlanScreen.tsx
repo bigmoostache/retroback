@@ -14,6 +14,7 @@ import { toCommand } from "@/lib/api"
 import { num } from "@/lib/format"
 import { planCreate, planDelete, planUpdate, type Ask } from "@/lib/requests"
 import type { Engine } from "@/lib/useEngine"
+import { useNode } from "@/lib/useEngine"
 
 /** Where the choice between the graph and the list is kept. */
 const LAYOUT_KEY = "rb-layout"
@@ -41,7 +42,8 @@ export function PlanScreen({ engine, ask }: { engine: Engine; ask: Ask }) {
   const [layout, setLayout] = useState<PlanLayout>(() =>
     localStorage.getItem(LAYOUT_KEY) === "list" ? "list" : "graph",
   )
-  const node = plan?.nodes.find((n) => n.ref === selected) ?? plan?.nodes[0] ?? null
+  const selectedRef = (selected && plan?.nodes.some((n) => n.ref === selected) ? selected : plan?.nodes[0]?.ref) ?? null
+  const node = useNode(plan?.slug ?? null, selectedRef, engine.version)
   // With no node yet there is nothing to draw: the list shows how to create the target.
   const hasNodes = (plan?.nodes.length ?? 0) > 0
   const tools = hasNodes ? (
@@ -111,7 +113,7 @@ export function PlanScreen({ engine, ask }: { engine: Engine; ask: Ask }) {
               <NodeGraph
                 key={plan.slug}
                 plan={plan}
-                selected={node?.ref ?? null}
+                selected={selectedRef}
                 onSelect={setSelected}
                 ask={ask}
                 tools={tools}
@@ -136,7 +138,7 @@ export function PlanScreen({ engine, ask }: { engine: Engine; ask: Ask }) {
           ) : (
             <div className="flex min-h-0 flex-1 flex-row gap-4 overflow-hidden px-6 pb-4">
               <div className="-m-1 flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-1">
-                <NodeChain plan={plan} selected={node?.ref ?? null} onSelect={setSelected} ask={ask} tools={tools} />
+                <NodeChain plan={plan} selected={selectedRef} onSelect={setSelected} ask={ask} tools={tools} />
               </div>
               {node && (
                 <NodeDetail
